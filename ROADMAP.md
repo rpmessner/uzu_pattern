@@ -2,7 +2,7 @@
 
 Pattern orchestration library for Strudel.js-style transformations. This roadmap tracks feature parity with [Strudel.js](https://strudel.cc/).
 
-## ✅ Implemented (v0.1.0)
+## ✅ Implemented (v0.2.0)
 
 ### Core Infrastructure
 - [x] `Pattern` struct with events and transforms
@@ -17,6 +17,10 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 - [x] `rev/1` - Reverse pattern
 - [x] `early/2` - Shift pattern earlier (wraps)
 - [x] `late/2` - Shift pattern later (wraps)
+- [x] `ply/2` - Repeat each event N times (v0.2.0)
+- [x] `compress/3` - Fit pattern into time segment (v0.2.0)
+- [x] `zoom/3` - Extract and expand time segment (v0.2.0)
+- [x] `linger/2` - Repeat fraction of pattern (v0.2.0)
 
 ### Combinators
 - [x] `stack/1` - Play patterns simultaneously
@@ -29,6 +33,8 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 - [x] `sometimes/2` - 50% probability
 - [x] `often/2` - 75% probability
 - [x] `rarely/2` - 25% probability
+- [x] `iter/2` - Rotate pattern start each cycle (v0.2.0)
+- [x] `iter_back/2` - Rotate in reverse (v0.2.0)
 
 ### Degradation
 - [x] `degrade/1` - Remove ~50% of events randomly
@@ -38,19 +44,6 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 - [x] `jux/2` - Apply function to right channel
 
 ---
-
-## 🚀 Phase 2: Extended Time Modifiers (v0.2.0)
-
-Priority: High - Core pattern manipulation
-
-| Function | Description | Strudel Equivalent |
-|----------|-------------|-------------------|
-| `ply/2` | Repeat each event N times | `ply` |
-| `iter/2` | Rotate pattern start each cycle | `iter` |
-| `iter_back/2` | Rotate in reverse | `iter'` |
-| `compress/3` | Fit pattern into time segment | `compress` |
-| `zoom/3` | Extract and expand time segment | `zoom` |
-| `linger/2` | Repeat fraction of pattern | `linger` |
 
 ## 🚀 Phase 3: Advanced Conditional (v0.3.0)
 

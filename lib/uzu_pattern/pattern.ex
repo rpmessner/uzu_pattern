@@ -48,6 +48,8 @@ defmodule UzuPattern.Pattern do
           {:every, pos_integer(), function()}
           | {:sometimes_by, float(), function()}
           | {:when, function(), function()}
+          | {:iter, pos_integer()}
+          | {:iter_back, pos_integer()}
 
   defstruct events: [],
             transforms: []
@@ -246,6 +248,152 @@ defmodule UzuPattern.Pattern do
     early(pattern, -amount)
   end
 
+  @doc """
+  Repeat each event N times within its duration.
+
+  Creates rapid repetitions of each event, useful for rolls and stutters.
+  Each repetition fits within the original event's time slot.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.ply(2)
+      iex> events = Pattern.events(pattern)
+      iex> length(events)
+      4
+      iex> # First event at 0.0, second at 0.125 (half of 0.25 duration)
+  """
+  def ply(%__MODULE__{} = pattern, n) when is_integer(n) and n > 0 do
+    new_events =
+      pattern.events
+      |> Enum.flat_map(fn event ->
+        event_duration = event.duration / n
+
+        for i <- 0..(n - 1) do
+          %{event |
+            time: event.time + (i * event_duration),
+            duration: event_duration
+          }
+        end
+      end)
+      |> Enum.sort_by(& &1.time)
+
+    %{pattern | events: new_events}
+  end
+
+  @doc """
+  Compress the pattern into a time segment within the cycle.
+
+  Squeezes all events into the time range [start, end], leaving the rest
+  of the cycle as silence. Useful for creating rhythmic gaps.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.compress(0.25, 0.75)
+      iex> events = Pattern.events(pattern)
+      iex> # All events now fit between 0.25 and 0.75
+      iex> Enum.all?(events, fn e -> e.time >= 0.25 and e.time < 0.75 end)
+      true
+  """
+  def compress(%__MODULE__{} = pattern, start_time, end_time)
+      when is_number(start_time) and is_number(end_time) and start_time < end_time do
+    span = end_time - start_time
+
+    new_events =
+      pattern.events
+      |> Enum.map(fn event ->
+        %{event |
+          time: start_time + (event.time * span),
+          duration: event.duration * span
+        }
+      end)
+      |> Enum.filter(fn event -> event.time < 1.0 end)
+
+    %{pattern | events: new_events}
+  end
+
+  @doc """
+  Extract and expand a time segment of the pattern.
+
+  Zooms into a specific portion of the pattern [start, end] and stretches it
+  to fill the entire cycle. This is the inverse of compress.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.zoom(0.25, 0.75)
+      iex> events = Pattern.events(pattern)
+      iex> # Middle half of pattern (sd, hh) expanded to full cycle
+      iex> length(events)
+      2
+  """
+  def zoom(%__MODULE__{} = pattern, start_time, end_time)
+      when is_number(start_time) and is_number(end_time) and start_time < end_time do
+    span = end_time - start_time
+
+    new_events =
+      pattern.events
+      |> Enum.filter(fn event ->
+        # Keep only events that start within the zoom window
+        event.time >= start_time and event.time < end_time
+      end)
+      |> Enum.map(fn event ->
+        # Scale and shift the time to fill the full cycle
+        new_time = (event.time - start_time) / span
+        new_duration = event.duration / span
+
+        %{event |
+          time: new_time,
+          duration: new_duration
+        }
+      end)
+
+    %{pattern | events: new_events}
+  end
+
+  @doc """
+  Repeat a fraction of the pattern to fill the cycle.
+
+  Selects the given fraction of the pattern (from start) and repeats it
+  to fill the remainder of the cycle. Also known as fastgap in Strudel.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.linger(0.5)
+      iex> events = Pattern.events(pattern)
+      iex> # First half (bd sd) repeated twice to fill cycle
+      iex> length(events)
+      4
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.linger(0.25)
+      iex> events = Pattern.events(pattern)
+      iex> # First quarter (bd) repeated 4 times
+      iex> length(events)
+      4
+  """
+  def linger(%__MODULE__{} = pattern, fraction)
+      when is_number(fraction) and fraction > 0.0 and fraction <= 1.0 do
+    # Extract events in the first 'fraction' of the pattern
+    extracted =
+      pattern.events
+      |> Enum.filter(fn event -> event.time < fraction end)
+
+    # Calculate how many times to repeat
+    repetitions = round(1.0 / fraction)
+
+    # Create repeated events
+    new_events =
+      for rep <- 0..(repetitions - 1) do
+        offset = rep * fraction
+
+        Enum.map(extracted, fn event ->
+          %{event | time: event.time + offset}
+        end)
+      end
+      |> List.flatten()
+      |> Enum.sort_by(& &1.time)
+
+    %{pattern | events: new_events}
+  end
+
   # ============================================================================
   # Combinators (Immediate)
   # ============================================================================
@@ -375,6 +523,45 @@ defmodule UzuPattern.Pattern do
     sometimes_by(pattern, 0.25, fun)
   end
 
+  @doc """
+  Rotate the pattern start position each cycle.
+
+  Divides the pattern into N subdivisions and shifts the starting point by
+  one subdivision each cycle. Creates evolving patterns.
+
+  This is a cycle-aware transformation - resolved at query time.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.iter(4)
+      iex> # Cycle 0: starts at bd (subdivision 0)
+      iex> # Cycle 1: starts at sd (subdivision 1)
+      iex> # Cycle 2: starts at hh (subdivision 2)
+      iex> # Cycle 3: starts at cp (subdivision 3)
+      iex> # Cycle 4: wraps back to bd
+  """
+  def iter(%__MODULE__{} = pattern, n) when is_integer(n) and n > 0 do
+    transform = {:iter, n}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
+  @doc """
+  Rotate the pattern start position backwards each cycle.
+
+  Like iter/2 but rotates in reverse. Also known as iter' in TidalCycles.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.iter_back(4)
+      iex> # Cycle 0: starts at bd
+      iex> # Cycle 1: starts at cp (backwards rotation)
+      iex> # Cycle 2: starts at hh
+  """
+  def iter_back(%__MODULE__{} = pattern, n) when is_integer(n) and n > 0 do
+    transform = {:iter_back, n}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
   # ============================================================================
   # Degradation
   # ============================================================================
@@ -457,5 +644,47 @@ defmodule UzuPattern.Pattern do
     else
       pattern
     end
+  end
+
+  defp apply_transform(pattern, {:iter, n}, cycle) do
+    # Calculate rotation amount based on cycle
+    rotation = rem(cycle, n)
+    segment_size = 1.0 / n
+
+    # Rotate by shifting time forward and wrapping
+    new_events =
+      pattern.events
+      |> Enum.map(fn event ->
+        # Shift backwards by rotation amount
+        new_time = event.time - (rotation * segment_size)
+        # Wrap if negative
+        wrapped_time = if new_time < 0, do: new_time + 1.0, else: new_time
+
+        %{event | time: wrapped_time}
+      end)
+      |> Enum.sort_by(& &1.time)
+
+    %{pattern | events: new_events}
+  end
+
+  defp apply_transform(pattern, {:iter_back, n}, cycle) do
+    # Calculate rotation amount in reverse
+    rotation = rem(cycle, n)
+    segment_size = 1.0 / n
+
+    # Rotate by shifting time backwards (opposite of iter)
+    new_events =
+      pattern.events
+      |> Enum.map(fn event ->
+        # Shift forwards by rotation amount
+        new_time = event.time + (rotation * segment_size)
+        # Wrap if >= 1.0
+        wrapped_time = if new_time >= 1.0, do: new_time - 1.0, else: new_time
+
+        %{event | time: wrapped_time}
+      end)
+      |> Enum.sort_by(& &1.time)
+
+    %{pattern | events: new_events}
   end
 end
