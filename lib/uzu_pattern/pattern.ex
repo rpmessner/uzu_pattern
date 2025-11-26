@@ -269,10 +269,7 @@ defmodule UzuPattern.Pattern do
         event_duration = event.duration / n
 
         for i <- 0..(n - 1) do
-          %{event |
-            time: event.time + (i * event_duration),
-            duration: event_duration
-          }
+          %{event | time: event.time + i * event_duration, duration: event_duration}
         end
       end)
       |> Enum.sort_by(& &1.time)
@@ -301,10 +298,7 @@ defmodule UzuPattern.Pattern do
     new_events =
       pattern.events
       |> Enum.map(fn event ->
-        %{event |
-          time: start_time + (event.time * span),
-          duration: event.duration * span
-        }
+        %{event | time: start_time + event.time * span, duration: event.duration * span}
       end)
       |> Enum.filter(fn event -> event.time < 1.0 end)
 
@@ -340,10 +334,7 @@ defmodule UzuPattern.Pattern do
         new_time = (event.time - start_time) / span
         new_duration = event.duration / span
 
-        %{event |
-          time: new_time,
-          duration: new_duration
-        }
+        %{event | time: new_time, duration: new_duration}
       end)
 
     %{pattern | events: new_events}
@@ -656,7 +647,7 @@ defmodule UzuPattern.Pattern do
       pattern.events
       |> Enum.map(fn event ->
         # Shift backwards by rotation amount
-        new_time = event.time - (rotation * segment_size)
+        new_time = event.time - rotation * segment_size
         # Wrap if negative
         wrapped_time = if new_time < 0, do: new_time + 1.0, else: new_time
 
@@ -677,7 +668,7 @@ defmodule UzuPattern.Pattern do
       pattern.events
       |> Enum.map(fn event ->
         # Shift forwards by rotation amount
-        new_time = event.time + (rotation * segment_size)
+        new_time = event.time + rotation * segment_size
         # Wrap if >= 1.0
         wrapped_time = if new_time >= 1.0, do: new_time - 1.0, else: new_time
 

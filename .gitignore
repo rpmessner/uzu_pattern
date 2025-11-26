@@ -22,3 +22,20 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 uzu_pattern-*.tar
 
+
+# Dialyzer PLT files
+/priv/plts/
+
+# Coverage reports
+/coverage/
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
