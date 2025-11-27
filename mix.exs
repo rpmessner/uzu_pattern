@@ -1,7 +1,7 @@
 defmodule UzuPattern.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
   @source_url "https://github.com/rpmessner/uzu_pattern"
 
   def project do
@@ -49,8 +49,8 @@ defmodule UzuPattern.MixProject do
   defp description do
     """
     Pattern orchestration library for Strudel.js-style transformations.
-    Provides fast, slow, rev, ply, compress, zoom, iter, stack, cat, every, jux and more.
-    Works with UzuParser for mini-notation parsing. Includes 40+ pattern transformation functions.
+    Provides fast, slow, rev, ply, compress, zoom, iter, first_of, last_of, when_fn, chunk, struct_fn, mask, and more.
+    Works with UzuParser for mini-notation parsing. Includes 45+ pattern transformation functions.
     """
   end
 
