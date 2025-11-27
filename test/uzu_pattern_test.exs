@@ -906,6 +906,163 @@ defmodule UzuPatternTest do
   end
 
   # ============================================================================
+  # Phase 5: Advanced Combinators (v0.5.0)
+  # ============================================================================
+
+  describe "jux_by/3" do
+    test "creates partial stereo effect" do
+      pattern = Pattern.new("bd sd") |> Pattern.jux_by(0.5, &Pattern.rev/1)
+      events = Pattern.events(pattern)
+
+      # Should have 4 events (2 original + 2 transformed)
+      assert length(events) == 4
+
+      # Check pan values
+      pans = Enum.map(events, fn e -> e.params[:pan] end)
+      assert -0.5 in pans
+      assert 0.5 in pans
+    end
+
+    test "jux_by with 0.0 creates centered effect" do
+      pattern = Pattern.new("bd") |> Pattern.jux_by(0.0, &Pattern.rev/1)
+      events = Pattern.events(pattern)
+
+      pans = Enum.map(events, fn e -> e.params[:pan] end)
+      assert Enum.all?(pans, fn p -> p == 0.0 or p == -0.0 end)
+    end
+
+    test "jux_by with 1.0 equals jux" do
+      pattern = Pattern.new("bd") |> Pattern.jux_by(1.0, &Pattern.rev/1)
+      events = Pattern.events(pattern)
+
+      pans = Enum.map(events, fn e -> e.params[:pan] end)
+      assert -1.0 in pans
+      assert 1.0 in pans
+    end
+  end
+
+  describe "append/2" do
+    test "appends pattern after first" do
+      p1 = Pattern.new("bd sd")
+      p2 = Pattern.new("hh cp")
+      pattern = Pattern.append(p1, p2)
+      events = Pattern.events(pattern)
+
+      assert length(events) == 4
+
+      # First two events at times < 1.0
+      first_two = Enum.take(events, 2)
+      assert Enum.all?(first_two, fn e -> e.time < 1.0 end)
+
+      # Last two events at times >= 1.0
+      last_two = Enum.drop(events, 2)
+      assert Enum.all?(last_two, fn e -> e.time >= 1.0 end)
+    end
+  end
+
+  describe "superimpose/2" do
+    test "stacks transformed version with original" do
+      pattern = Pattern.new("bd sd") |> Pattern.superimpose(&Pattern.fast(&1, 2))
+      events = Pattern.events(pattern)
+
+      # Should have original 2 + transformed 2 = 4 events
+      assert length(events) == 4
+    end
+
+    test "preserves original events" do
+      pattern = Pattern.new("bd sd") |> Pattern.superimpose(&Pattern.rev/1)
+      events = Pattern.events(pattern)
+
+      # Should have both bd and sd in original positions
+      assert length(events) == 4
+    end
+  end
+
+  describe "off/3" do
+    test "creates delayed copy" do
+      pattern = Pattern.new("bd sd") |> Pattern.off(0.125, &Pattern.rev/1)
+      events = Pattern.events(pattern)
+
+      # Should have 4 events (2 original + 2 offset)
+      assert length(events) == 4
+    end
+
+    test "wraps time correctly" do
+      pattern = Pattern.new("bd") |> Pattern.off(0.9, fn p -> p end)
+      events = Pattern.events(pattern)
+
+      times = Enum.map(events, fn e -> e.time end)
+      # Original at 0.0, offset wraps: 0.0 + 0.9 = 0.9
+      assert 0.0 in times
+      assert Enum.any?(times, fn t -> abs(t - 0.9) < 0.001 end)
+    end
+  end
+
+  describe "echo/3" do
+    test "creates multiple delayed copies" do
+      pattern = Pattern.new("bd sd") |> Pattern.echo(3, 0.125, 0.8)
+      events = Pattern.events(pattern)
+
+      # Should have original 2 + 3 echoes * 2 = 8 events
+      assert length(events) == 8
+    end
+
+    test "decreases gain for each echo" do
+      pattern = Pattern.new("bd") |> Pattern.echo(2, 0.125, 0.5)
+      events = Pattern.events(pattern)
+
+      # Get gains (original has no gain param, echoes have decreasing gain)
+      gains = Enum.map(events, fn e -> Map.get(e.params, :gain, 1.0) end)
+
+      # Should have: 1.0 (original), 0.5 (first echo), 0.25 (second echo)
+      assert 1.0 in gains
+      assert Enum.any?(gains, fn g -> abs(g - 0.5) < 0.001 end)
+      assert Enum.any?(gains, fn g -> abs(g - 0.25) < 0.001 end)
+    end
+  end
+
+  describe "striate/2" do
+    test "creates sliced events" do
+      pattern = Pattern.new("bd sd") |> Pattern.striate(4)
+      events = Pattern.events(pattern)
+
+      # Each event sliced into 4 = 2 * 4 = 8 events
+      assert length(events) == 8
+    end
+
+    test "reduces duration of each slice" do
+      pattern = Pattern.new("bd") |> Pattern.striate(4)
+      events = Pattern.events(pattern)
+
+      # "bd" has 1 event, striate(4) creates 4 slices
+      assert length(events) == 4
+      # Each slice should have reduced duration
+      assert Enum.all?(events, fn e -> e.duration < 0.5 end)
+    end
+  end
+
+  describe "chop/2" do
+    test "chops events into pieces" do
+      pattern = Pattern.new("bd sd") |> Pattern.chop(4)
+      events = Pattern.events(pattern)
+
+      # 2 events chopped into 4 = 8 events
+      assert length(events) == 8
+    end
+
+    test "maintains sound identity" do
+      pattern = Pattern.new("bd sd") |> Pattern.chop(3)
+      events = Pattern.events(pattern)
+
+      bd_events = Enum.filter(events, fn e -> e.sound == "bd" end)
+      sd_events = Enum.filter(events, fn e -> e.sound == "sd" end)
+
+      assert length(bd_events) == 3
+      assert length(sd_events) == 3
+    end
+  end
+
+  # ============================================================================
   # Chaining
   # ============================================================================
 
