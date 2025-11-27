@@ -50,6 +50,11 @@ defmodule UzuPattern.Pattern do
           | {:when, function(), function()}
           | {:iter, pos_integer()}
           | {:iter_back, pos_integer()}
+          | {:first_of, pos_integer(), function()}
+          | {:last_of, pos_integer(), function()}
+          | {:when_fn, function(), function()}
+          | {:chunk, pos_integer(), function()}
+          | {:chunk_back, pos_integer(), function()}
 
   defstruct events: [],
             transforms: []
@@ -553,6 +558,88 @@ defmodule UzuPattern.Pattern do
     %{pattern | transforms: pattern.transforms ++ [transform]}
   end
 
+  @doc """
+  Apply a function every N cycles, starting from the first cycle.
+
+  Similar to every/3, but only applies on cycles where (cycle mod n) == 0.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("c3 d3 e3 g3") |> Pattern.first_of(4, &Pattern.rev/1)
+      iex> # On cycles 0, 4, 8... the pattern is reversed
+      iex> # On cycles 1, 2, 3, 5, 6, 7... the pattern is unchanged
+  """
+  def first_of(%__MODULE__{} = pattern, n, fun) when is_integer(n) and n > 0 and is_function(fun, 1) do
+    transform = {:first_of, n, fun}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
+  @doc """
+  Apply a function every N cycles, starting from the last cycle.
+
+  Applies on cycles where (cycle mod n) == (n - 1).
+
+  ## Examples
+
+      iex> pattern = Pattern.new("c3 d3 e3 g3") |> Pattern.last_of(4, &Pattern.rev/1)
+      iex> # On cycles 3, 7, 11... the pattern is reversed (last of each 4-cycle group)
+  """
+  def last_of(%__MODULE__{} = pattern, n, fun) when is_integer(n) and n > 0 and is_function(fun, 1) do
+    transform = {:last_of, n, fun}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
+  @doc """
+  Apply a function when a condition function returns true.
+
+  The condition function receives the cycle number and should return a boolean.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("c3 eb3 g3") |> Pattern.when_fn(fn cycle -> rem(cycle, 2) == 1 end, &Pattern.rev/1)
+      iex> # Pattern is reversed on odd cycles
+  """
+  def when_fn(%__MODULE__{} = pattern, condition_fn, fun)
+      when is_function(condition_fn, 1) and is_function(fun, 1) do
+    transform = {:when_fn, condition_fn, fun}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
+  @doc """
+  Divide pattern into N parts, applying function to each part in turn per cycle.
+
+  On cycle 0, the function is applied to part 0. On cycle 1, to part 1, etc.
+  Cycles through parts in order.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("0 1 2 3") |> Pattern.chunk(4, &Pattern.rev/1)
+      iex> # Cycle 0: first quarter reversed
+      iex> # Cycle 1: second quarter reversed
+      iex> # Cycle 2: third quarter reversed
+      iex> # Cycle 3: fourth quarter reversed
+  """
+  def chunk(%__MODULE__{} = pattern, n, fun) when is_integer(n) and n > 0 and is_function(fun, 1) do
+    transform = {:chunk, n, fun}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
+  @doc """
+  Like chunk/3 but cycles through parts in reverse order.
+
+  Also known as chunk' in TidalCycles.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("0 1 2 3") |> Pattern.chunk_back(4, &Pattern.rev/1)
+      iex> # Cycle 0: fourth quarter reversed
+      iex> # Cycle 1: third quarter reversed
+  """
+  def chunk_back(%__MODULE__{} = pattern, n, fun) when is_integer(n) and n > 0 and is_function(fun, 1) do
+    transform = {:chunk_back, n, fun}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
   # ============================================================================
   # Degradation
   # ============================================================================
@@ -606,6 +693,72 @@ defmodule UzuPattern.Pattern do
 
     all_events = Enum.sort_by(left_events ++ right_events, & &1.time)
     %{pattern | events: all_events}
+  end
+
+  # ============================================================================
+  # Structural Filtering
+  # ============================================================================
+
+  @doc """
+  Apply rhythmic structure from a mini-notation pattern.
+
+  Uses 'x' for events and '~' for rests. The structure pattern determines
+  which events from the source pattern are kept.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("c eb g") |> Pattern.struct_fn("x ~ x ~")
+      iex> events = Pattern.events(pattern)
+      iex> # Only events at positions 0 and 2 are kept (where 'x' appears)
+  """
+  def struct_fn(%__MODULE__{} = pattern, structure_string) when is_binary(structure_string) do
+    # Parse the structure pattern
+    struct_events = UzuParser.parse(structure_string)
+
+    # Keep only pattern events that align with 'x' markers
+    new_events =
+      pattern.events
+      |> Enum.filter(fn event ->
+        # Check if there's a struct event at this time position
+        Enum.any?(struct_events, fn struct_event ->
+          # Allow small epsilon for floating point comparison
+          abs(event.time - struct_event.time) < 0.001 and
+            struct_event.sound != "~"
+        end)
+      end)
+
+    %{pattern | events: new_events}
+  end
+
+  @doc """
+  Silence events based on a mask pattern.
+
+  Returns silence (removes events) when mask is 0 or '~'.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.mask("1 0 1 0")
+      iex> events = Pattern.events(pattern)
+      iex> # Only bd and hh remain (positions 0 and 2 where mask is 1)
+  """
+  def mask(%__MODULE__{} = pattern, mask_string) when is_binary(mask_string) do
+    # Parse the mask pattern
+    mask_events = UzuParser.parse(mask_string)
+
+    # Keep only pattern events where mask is not 0 or ~
+    new_events =
+      pattern.events
+      |> Enum.filter(fn event ->
+        # Find the corresponding mask event
+        Enum.any?(mask_events, fn mask_event ->
+          # Check if times align and mask value is not 0 or ~
+          abs(event.time - mask_event.time) < 0.001 and
+            mask_event.sound != "~" and
+            mask_event.sound != "0"
+        end)
+      end)
+
+    %{pattern | events: new_events}
   end
 
   # ============================================================================
@@ -677,5 +830,77 @@ defmodule UzuPattern.Pattern do
       |> Enum.sort_by(& &1.time)
 
     %{pattern | events: new_events}
+  end
+
+  defp apply_transform(pattern, {:first_of, n, fun}, cycle) do
+    if rem(cycle, n) == 0 do
+      fun.(pattern)
+    else
+      pattern
+    end
+  end
+
+  defp apply_transform(pattern, {:last_of, n, fun}, cycle) do
+    if rem(cycle, n) == n - 1 do
+      fun.(pattern)
+    else
+      pattern
+    end
+  end
+
+  defp apply_transform(pattern, {:when_fn, condition_fn, fun}, cycle) do
+    if condition_fn.(cycle) do
+      fun.(pattern)
+    else
+      pattern
+    end
+  end
+
+  defp apply_transform(pattern, {:chunk, n, fun}, cycle) do
+    # Determine which chunk to apply the function to
+    chunk_index = rem(cycle, n)
+    chunk_size = 1.0 / n
+    chunk_start = chunk_index * chunk_size
+    chunk_end = (chunk_index + 1) * chunk_size
+
+    # Split events into those in the chunk and those outside
+    {chunk_events, other_events} =
+      Enum.split_with(pattern.events, fn event ->
+        event.time >= chunk_start and event.time < chunk_end
+      end)
+
+    # Create a pattern from just the chunk events
+    chunk_pattern = %{pattern | events: chunk_events}
+
+    # Apply the function to the chunk
+    transformed_chunk = fun.(chunk_pattern)
+
+    # Combine transformed chunk with other events
+    all_events = Enum.sort_by(other_events ++ transformed_chunk.events, & &1.time)
+    %{pattern | events: all_events}
+  end
+
+  defp apply_transform(pattern, {:chunk_back, n, fun}, cycle) do
+    # Like chunk but cycles through chunks in reverse
+    chunk_index = n - 1 - rem(cycle, n)
+    chunk_size = 1.0 / n
+    chunk_start = chunk_index * chunk_size
+    chunk_end = (chunk_index + 1) * chunk_size
+
+    # Split events into those in the chunk and those outside
+    {chunk_events, other_events} =
+      Enum.split_with(pattern.events, fn event ->
+        event.time >= chunk_start and event.time < chunk_end
+      end)
+
+    # Create a pattern from just the chunk events
+    chunk_pattern = %{pattern | events: chunk_events}
+
+    # Apply the function to the chunk
+    transformed_chunk = fun.(chunk_pattern)
+
+    # Combine transformed chunk with other events
+    all_events = Enum.sort_by(other_events ++ transformed_chunk.events, & &1.time)
+    %{pattern | events: all_events}
   end
 end
