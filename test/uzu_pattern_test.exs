@@ -764,6 +764,148 @@ defmodule UzuPatternTest do
   end
 
   # ============================================================================
+  # Phase 4: Effects & Parameters (v0.4.0)
+  # ============================================================================
+
+  describe "gain/2" do
+    test "sets gain parameter on all events" do
+      pattern = Pattern.new("bd sd hh") |> Pattern.gain(0.5)
+      events = Pattern.events(pattern)
+
+      assert length(events) == 3
+      assert Enum.all?(events, fn e -> e.params[:gain] == 0.5 end)
+    end
+
+    test "preserves other parameters" do
+      pattern = Pattern.new("bd") |> Pattern.pan(0.5) |> Pattern.gain(0.8)
+      events = Pattern.events(pattern)
+
+      event = hd(events)
+      assert event.params[:gain] == 0.8
+      assert event.params[:pan] == 0.5
+    end
+  end
+
+  describe "pan/2" do
+    test "sets pan parameter within valid range" do
+      pattern = Pattern.new("bd sd") |> Pattern.pan(0.75)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:pan] == 0.75 end)
+    end
+
+    test "accepts 0.0 (left)" do
+      pattern = Pattern.new("bd") |> Pattern.pan(0.0)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:pan] == 0.0
+    end
+
+    test "accepts 1.0 (right)" do
+      pattern = Pattern.new("bd") |> Pattern.pan(1.0)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:pan] == 1.0
+    end
+  end
+
+  describe "speed/2" do
+    test "sets speed parameter" do
+      pattern = Pattern.new("bd sd") |> Pattern.speed(2.0)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:speed] == 2.0 end)
+    end
+
+    test "accepts fractional speeds" do
+      pattern = Pattern.new("bd") |> Pattern.speed(0.5)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:speed] == 0.5
+    end
+  end
+
+  describe "cut/2" do
+    test "sets cut group parameter" do
+      pattern = Pattern.new("bd sd hh") |> Pattern.cut(1)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:cut] == 1 end)
+    end
+
+    test "accepts different cut groups" do
+      pattern = Pattern.new("bd") |> Pattern.cut(5)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:cut] == 5
+    end
+  end
+
+  describe "room/2" do
+    test "sets room (reverb) parameter" do
+      pattern = Pattern.new("bd sd") |> Pattern.room(0.5)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:room] == 0.5 end)
+    end
+
+    test "accepts 0.0 (dry)" do
+      pattern = Pattern.new("bd") |> Pattern.room(0.0)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:room] == 0.0
+    end
+
+    test "accepts 1.0 (wet)" do
+      pattern = Pattern.new("bd") |> Pattern.room(1.0)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:room] == 1.0
+    end
+  end
+
+  describe "delay/2" do
+    test "sets delay parameter" do
+      pattern = Pattern.new("bd sd") |> Pattern.delay(0.25)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:delay] == 0.25 end)
+    end
+  end
+
+  describe "lpf/2" do
+    test "sets low-pass filter frequency" do
+      pattern = Pattern.new("bd sd") |> Pattern.lpf(1000)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:lpf] == 1000 end)
+    end
+
+    test "accepts full frequency range" do
+      pattern = Pattern.new("bd") |> Pattern.lpf(20000)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:lpf] == 20000
+    end
+  end
+
+  describe "hpf/2" do
+    test "sets high-pass filter frequency" do
+      pattern = Pattern.new("bd sd") |> Pattern.hpf(500)
+      events = Pattern.events(pattern)
+
+      assert Enum.all?(events, fn e -> e.params[:hpf] == 500 end)
+    end
+
+    test "accepts full frequency range" do
+      pattern = Pattern.new("bd") |> Pattern.hpf(20000)
+      events = Pattern.events(pattern)
+
+      assert hd(events).params[:hpf] == 20000
+    end
+  end
+
+  # ============================================================================
   # Chaining
   # ============================================================================
 
@@ -790,6 +932,24 @@ defmodule UzuPatternTest do
       events = Pattern.query(pattern, 0)
       # Should be reversed and masked
       assert length(events) == 3
+    end
+
+    test "chains Phase 4 effects" do
+      pattern =
+        "bd sd hh"
+        |> Pattern.new()
+        |> Pattern.gain(0.8)
+        |> Pattern.pan(0.5)
+        |> Pattern.lpf(2000)
+        |> Pattern.room(0.3)
+
+      events = Pattern.events(pattern)
+
+      event = hd(events)
+      assert event.params[:gain] == 0.8
+      assert event.params[:pan] == 0.5
+      assert event.params[:lpf] == 2000
+      assert event.params[:room] == 0.3
     end
   end
 end
