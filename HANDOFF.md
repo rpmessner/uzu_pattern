@@ -7,7 +7,7 @@ This document provides comprehensive information for integrating UzuPattern with
 UzuPattern sits between UzuParser (parsing) and Waveform (audio playback):
 
 ```
-User Code (kino_harmony, harmony_server)
+          User Code
               │
               ▼
 ┌─────────────────────────────────────────┐
@@ -19,11 +19,11 @@ User Code (kino_harmony, harmony_server)
 │  |> Pattern.query(cycle)                │
 └────────────────┬────────────────────────┘
                  │
-    ┌────────────┴────────────┐
-    ▼                         ▼
+    ┌────────────┴
+    ▼ 
 ┌──────────┐           ┌──────────┐
 │UzuParser │           │ Waveform │
-│          │           │          │
+│          │ --------> │          │
 │parse/1   │           │schedule  │
 │[Event{}] │           │play OSC  │
 └──────────┘           └──────────┘
