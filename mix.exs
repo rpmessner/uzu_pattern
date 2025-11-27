@@ -74,7 +74,13 @@ defmodule UzuPattern.MixProject do
         "CONTRIBUTING.md": [title: "Contributing"]
       ],
       groups_for_modules: [
-        Core: [UzuPattern, UzuPattern.Pattern]
+        Core: [UzuPattern, UzuPattern.Pattern],
+        "Time Modifiers": [UzuPattern.Pattern.Time],
+        Combinators: [UzuPattern.Pattern.Combinators],
+        "Conditional Modifiers": [UzuPattern.Pattern.Conditional],
+        "Effects & Parameters": [UzuPattern.Pattern.Effects],
+        "Rhythm & Timing": [UzuPattern.Pattern.Rhythm],
+        Structure: [UzuPattern.Pattern.Structure]
       ],
       authors: ["Ryan Messner"]
     ]
