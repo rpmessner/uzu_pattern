@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-11-26
+
+### Added
+
+#### Advanced Conditional Modifiers (Phase 3)
+- **`first_of/3`** - Apply function on first of N cycles (Strudel's `firstOf`)
+- **`last_of/3`** - Apply function on last of N cycles (Strudel's `lastOf`)
+- **`when_fn/3`** - Apply function when condition function returns true (Strudel's `when`)
+- **`chunk/3`** - Divide pattern into N parts, applying function to each part in turn per cycle
+- **`chunk_back/3`** - Like chunk but cycles through parts in reverse order (TidalCycles `chunk'`)
+
+#### Structural Filtering
+- **`struct_fn/2`** - Apply rhythmic structure pattern (uses 'x' for events, '~' for rests)
+- **`mask/2`** - Silence events based on binary pattern (0 or '~' = silence, others = keep)
+
+#### Infrastructure
+- Added transform types for Phase 3: `{:first_of, n, fun}`, `{:last_of, n, fun}`, `{:when_fn, condition_fn, fun}`, `{:chunk, n, fun}`, `{:chunk_back, n, fun}`
+- Implemented `apply_transform/3` handlers for all new cycle-aware functions
+- Comprehensive test coverage (65 tests, 100% passing)
+
+### Changed
+- Updated version to 0.3.0
+- Updated ROADMAP.md to mark Phase 3 as implemented
+- Enhanced typespec with new transform types
+
+### Technical Details
+- Cycle-aware conditional modifiers: `first_of`, `last_of`, `when_fn`, `chunk`, `chunk_back`
+- Immediate structural filters: `struct_fn`, `mask`
+- All functions maintain pattern properties and support chaining
+- Based on [Strudel.js conditional modifiers](https://strudel.cc/learn/conditional-modifiers/)
+
 ## [0.2.0] - 2025-11-26
 
 ### Added
@@ -90,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HANDOFF guide for architecture and integration
 - ExDoc documentation generation
 
-[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rpmessner/uzu_pattern/releases/tag/v0.1.0
