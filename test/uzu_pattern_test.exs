@@ -1063,6 +1063,120 @@ defmodule UzuPatternTest do
   end
 
   # ============================================================================
+  # Phase 6: Advanced Rhythm (v0.6.0)
+  # ============================================================================
+
+  describe "euclid/3" do
+    test "generates Euclidean rhythm" do
+      pattern = Pattern.new("bd sd hh cp bd sd hh cp") |> Pattern.euclid(3, 8)
+      events = Pattern.events(pattern)
+
+      # 3 pulses across 8 steps = 3 events
+      assert length(events) == 3
+    end
+
+    test "euclid(5, 8) generates correct pattern" do
+      pattern = Pattern.new("a b c d e f g h") |> Pattern.euclid(5, 8)
+      events = Pattern.events(pattern)
+
+      # Classic 5 over 8 Euclidean rhythm
+      assert length(events) == 5
+    end
+
+    test "euclid with more events than pulses filters correctly" do
+      pattern = Pattern.new("a b c d e f g h i j") |> Pattern.euclid(3, 8)
+      events = Pattern.events(pattern)
+
+      # Euclidean(3,8) = [1,0,0,1,0,0,1,0] has pulses at positions 0,3,6
+      # With 10 events, indices 0,3,6 match, plus index 8 wraps to position 0
+      assert length(events) == 4
+      assert Enum.at(events, 0).sound == "a"  # index 0
+      assert Enum.at(events, 1).sound == "d"  # index 3
+      assert Enum.at(events, 2).sound == "g"  # index 6
+      assert Enum.at(events, 3).sound == "i"  # index 8
+    end
+  end
+
+  describe "euclid_rot/4" do
+    test "rotates Euclidean rhythm" do
+      pattern = Pattern.new("bd sd hh cp bd sd hh cp") |> Pattern.euclid_rot(3, 8, 2)
+      events = Pattern.events(pattern)
+
+      # Still 3 pulses, but rotated by 2 steps
+      assert length(events) == 3
+    end
+
+    test "rotation changes which events are kept" do
+      p1 = Pattern.new("a b c d e f g h") |> Pattern.euclid(3, 8)
+      p2 = Pattern.new("a b c d e f g h") |> Pattern.euclid_rot(3, 8, 1)
+
+      events1 = Pattern.events(p1)
+      events2 = Pattern.events(p2)
+
+      # Same number of events
+      assert length(events1) == length(events2)
+      # But different events selected (unless rotation wraps perfectly)
+      sounds1 = Enum.map(events1, fn e -> e.sound end)
+      sounds2 = Enum.map(events2, fn e -> e.sound end)
+      # Rotation should create different selection pattern
+      assert sounds1 != sounds2 or length(sounds1) == 0
+    end
+  end
+
+  describe "swing/2" do
+    test "applies swing timing" do
+      pattern = Pattern.new("hh hh hh hh hh hh hh hh") |> Pattern.swing(4)
+      events = Pattern.events(pattern)
+
+      # All events still present
+      assert length(events) == 8
+    end
+
+    test "modifies event timing" do
+      original = Pattern.new("hh hh hh hh")
+      swung = Pattern.new("hh hh hh hh") |> Pattern.swing(2)
+
+      original_times = Pattern.events(original) |> Enum.map(fn e -> e.time end)
+      swung_times = Pattern.events(swung) |> Enum.map(fn e -> e.time end)
+
+      # At least some times should be different
+      assert original_times != swung_times
+    end
+  end
+
+  describe "swing_by/3" do
+    test "applies parameterized swing" do
+      pattern = Pattern.new("hh hh hh hh hh hh hh hh") |> Pattern.swing_by(0.5, 4)
+      events = Pattern.events(pattern)
+
+      # All events still present
+      assert length(events) == 8
+    end
+
+    test "swing_by(0, n) does not change timing" do
+      original = Pattern.new("hh hh hh hh")
+      swung = Pattern.new("hh hh hh hh") |> Pattern.swing_by(0.0, 2)
+
+      original_times = Pattern.events(original) |> Enum.map(fn e -> e.time end)
+      swung_times = Pattern.events(swung) |> Enum.map(fn e -> e.time end)
+
+      # Times should be identical with 0 swing
+      assert original_times == swung_times
+    end
+
+    test "different swing amounts create different timings" do
+      p1 = Pattern.new("hh hh hh hh") |> Pattern.swing_by(0.25, 2)
+      p2 = Pattern.new("hh hh hh hh") |> Pattern.swing_by(0.5, 2)
+
+      times1 = Pattern.events(p1) |> Enum.map(fn e -> e.time end)
+      times2 = Pattern.events(p2) |> Enum.map(fn e -> e.time end)
+
+      # Different swing amounts = different timings
+      assert times1 != times2
+    end
+  end
+
+  # ============================================================================
   # Chaining
   # ============================================================================
 
