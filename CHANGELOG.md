@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-11-26
+
+### Added
+
+#### Effects & Parameters (Phase 4)
+- **`gain/2`** - Set volume/gain parameter for all events
+- **`pan/2`** - Set stereo pan position (0.0 = left, 1.0 = right, 0.5 = center)
+- **`speed/2`** - Set playback speed multiplier (1.0 = normal, 2.0 = double, 0.5 = half)
+- **`cut/2`** - Set cut group for event stopping (same group stops previous events)
+- **`room/2`** - Set reverb amount (0.0 = dry, 1.0 = wet)
+- **`delay/2`** - Set delay amount (0.0 = dry, 1.0 = wet)
+- **`lpf/2`** - Set low-pass filter cutoff frequency (0-20000 Hz)
+- **`hpf/2`** - Set high-pass filter cutoff frequency (0-20000 Hz)
+
+#### Infrastructure
+- 18 new tests for parameter functions (83 total, 100% passing)
+- All parameter functions modify event params map
+- Support for chaining multiple effects
+
+### Changed
+- Updated version to 0.4.0
+- Updated ROADMAP.md to mark Phase 4 as implemented
+
+### Technical Details
+- All parameter functions are immediate transforms (modify events directly)
+- Parameters stored in event params map for downstream audio processing
+- Validation: pan (0.0-1.0), speed (> 0.0), cut (≥ 0), room (0.0-1.0), delay (0.0-1.0), filters (0-20000 Hz)
+- Based on [Strudel.js audio effects](https://strudel.cc/learn/effects/)
+
 ## [0.3.0] - 2025-11-26
 
 ### Added
@@ -121,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HANDOFF guide for architecture and integration
 - ExDoc documentation generation
 
-[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rpmessner/uzu_pattern/releases/tag/v0.1.0
