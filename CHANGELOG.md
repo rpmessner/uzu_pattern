@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-11-27
+
+### Added
+
+#### Advanced Rhythm (Phase 6)
+- **`euclid/3`** - Generate Euclidean rhythms using Bjorklund's algorithm (N pulses over M steps)
+- **`euclid_rot/4`** - Euclidean rhythm with rotation offset for pattern variations
+- **`swing/2`** - Add swing timing with 1/3 delay (convenience function)
+- **`swing_by/3`** - Parameterized swing timing with custom delay amount
+
+#### Infrastructure
+- 10 new tests for rhythm functions (107 total, 100% passing)
+- Bjorklund's algorithm implementation for optimal pulse distribution
+- Swing timing delays events in second half of slices for shuffle feel
+
+### Changed
+- Updated version to 0.6.0
+- Updated ROADMAP.md to mark Phase 6 as implemented
+
+### Technical Details
+- Euclidean rhythms filter events based on generated binary patterns
+- Rotation offset shifts rhythm pattern for variations
+- Swing modifies event timing within their time slices
+- Based on [Strudel.js rhythm functions](https://strudel.cc/) and TidalCycles
+
+## [0.5.0] - 2025-11-27
+
+### Added
+
+#### Advanced Combinators (Phase 5)
+- **`jux_by/3`** - Parameterized jux with custom stereo separation amount (Strudel's `juxBy`)
+- **`append/2`** - Append second pattern after first completes (Strudel's `append`)
+- **`superimpose/2`** - Stack pattern with transformed version (Strudel's `superimpose`)
+- **`off/3`** - Create delayed copy with transformation (Strudel's `off`)
+- **`echo/3`** - Multiple delayed copies with decay (Strudel's `echo`)
+- **`striate/2`** - Interleave time-sliced segments (Strudel's `striate`)
+- **`chop/2`** - Slice pattern into pieces and rearrange (Strudel's `chop`)
+
+#### Infrastructure
+- 14 new tests for combinator functions (97 total, 100% passing)
+- All combinators support method chaining
+- Moved jux_by to Stereo section in documentation
+
+### Changed
+- Updated version to 0.5.0
+- Updated ROADMAP.md to mark Phase 5 as implemented
+
+### Technical Details
+- All combinators are immediate transforms (modify events directly)
+- Echo uses exponential gain decay for natural sound
+- Striate and chop use time slicing for rhythmic variation
+- Based on [Strudel.js combinators](https://strudel.cc/)
+
 ## [0.4.0] - 2025-11-26
 
 ### Added
@@ -150,7 +203,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HANDOFF guide for architecture and integration
 - ExDoc documentation generation
 
-[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.1.0...v0.2.0
