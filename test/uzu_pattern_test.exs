@@ -599,6 +599,171 @@ defmodule UzuPatternTest do
   end
 
   # ============================================================================
+  # Phase 3: Advanced Conditional (v0.3.0)
+  # ============================================================================
+
+  describe "first_of/3" do
+    test "applies function on first of N cycles" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.first_of(4, &Pattern.rev/1)
+
+      # Cycle 0: should be reversed
+      events_0 = Pattern.query(pattern, 0)
+      {_time, params_0} = hd(events_0)
+      assert Keyword.get(params_0, :s) == "cp"
+
+      # Cycle 1: should not be reversed
+      events_1 = Pattern.query(pattern, 1)
+      {_time, params_1} = hd(events_1)
+      assert Keyword.get(params_1, :s) == "bd"
+
+      # Cycle 4: should be reversed again
+      events_4 = Pattern.query(pattern, 4)
+      {_time, params_4} = hd(events_4)
+      assert Keyword.get(params_4, :s) == "cp"
+    end
+  end
+
+  describe "last_of/3" do
+    test "applies function on last of N cycles" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.last_of(4, &Pattern.rev/1)
+
+      # Cycle 0, 1, 2: should not be reversed
+      events_0 = Pattern.query(pattern, 0)
+      {_time, params_0} = hd(events_0)
+      assert Keyword.get(params_0, :s) == "bd"
+
+      # Cycle 3: should be reversed (last of 4)
+      events_3 = Pattern.query(pattern, 3)
+      {_time, params_3} = hd(events_3)
+      assert Keyword.get(params_3, :s) == "cp"
+
+      # Cycle 7: should be reversed (last of next group)
+      events_7 = Pattern.query(pattern, 7)
+      {_time, params_7} = hd(events_7)
+      assert Keyword.get(params_7, :s) == "cp"
+    end
+  end
+
+  describe "when_fn/3" do
+    test "applies function when condition is true" do
+      pattern =
+        Pattern.new("bd sd hh cp")
+        |> Pattern.when_fn(fn cycle -> rem(cycle, 2) == 1 end, &Pattern.rev/1)
+
+      # Even cycles: not reversed
+      events_0 = Pattern.query(pattern, 0)
+      {_time, params_0} = hd(events_0)
+      assert Keyword.get(params_0, :s) == "bd"
+
+      # Odd cycles: reversed
+      events_1 = Pattern.query(pattern, 1)
+      {_time, params_1} = hd(events_1)
+      assert Keyword.get(params_1, :s) == "cp"
+
+      events_3 = Pattern.query(pattern, 3)
+      {_time, params_3} = hd(events_3)
+      assert Keyword.get(params_3, :s) == "cp"
+    end
+
+    test "works with complex conditions" do
+      pattern =
+        Pattern.new("bd sd")
+        |> Pattern.when_fn(fn cycle -> cycle > 5 and rem(cycle, 3) == 0 end, &Pattern.rev/1)
+
+      # Cycle 5: doesn't meet condition (not divisible by 3)
+      events_5 = Pattern.query(pattern, 5)
+      {_time, params_5} = hd(events_5)
+      assert Keyword.get(params_5, :s) == "bd"
+
+      # Cycle 6: meets condition
+      events_6 = Pattern.query(pattern, 6)
+      {_time, params_6} = hd(events_6)
+      assert Keyword.get(params_6, :s) == "sd"
+    end
+  end
+
+  describe "chunk/3" do
+    test "applies function to rotating chunks" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.chunk(4, &Pattern.rev/1)
+
+      # Cycle 0: first chunk (bd) should be affected
+      events_0 = Pattern.query(pattern, 0)
+      bd_event = Enum.find(events_0, fn {_time, params} -> Keyword.get(params, :s) == "bd" end)
+      # Original order should be bd at 0.0, sd at 0.25, hh at 0.5, cp at 0.75
+      assert bd_event != nil
+
+      # All 4 events should still be present
+      assert length(events_0) == 4
+    end
+
+    test "cycles through all chunks" do
+      pattern = Pattern.new("a b c d") |> Pattern.chunk(2, &Pattern.fast(&1, 2))
+
+      # Verify pattern has transforms
+      assert length(pattern.transforms) == 1
+    end
+  end
+
+  describe "chunk_back/3" do
+    test "applies function to chunks in reverse" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.chunk_back(4, &Pattern.rev/1)
+
+      # Cycle 0: last chunk should be affected (reverse of chunk)
+      events_0 = Pattern.query(pattern, 0)
+      assert length(events_0) == 4
+    end
+  end
+
+  describe "struct_fn/2" do
+    test "applies rhythmic structure" do
+      pattern = Pattern.new("c eb g") |> Pattern.struct_fn("x ~ x")
+      events = Pattern.events(pattern)
+
+      # Should keep only events at positions 0 and 2
+      assert length(events) == 2
+      assert Enum.at(events, 0).sound == "c"
+      assert Enum.at(events, 1).sound == "g"
+    end
+
+    test "works with complex structures" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.struct_fn("x ~ ~ x")
+      events = Pattern.events(pattern)
+
+      # Should keep events at positions 0 and 3
+      assert length(events) == 2
+    end
+  end
+
+  describe "mask/2" do
+    test "silences based on binary pattern" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.mask("1 0 1 0")
+      events = Pattern.events(pattern)
+
+      # Should keep only events at positions 0 and 2 (where mask is 1)
+      assert length(events) == 2
+      assert Enum.at(events, 0).sound == "bd"
+      assert Enum.at(events, 1).sound == "hh"
+    end
+
+    test "filters out rests in mask" do
+      pattern = Pattern.new("bd sd hh cp") |> Pattern.mask("1 ~ 1 1")
+      events = Pattern.events(pattern)
+
+      # Should remove event at position 1 (where mask is ~)
+      assert length(events) == 3
+    end
+
+    test "filters out zeros" do
+      pattern = Pattern.new("a b c d") |> Pattern.mask("1 1 0 0")
+      events = Pattern.events(pattern)
+
+      assert length(events) == 2
+      assert Enum.at(events, 0).sound == "a"
+      assert Enum.at(events, 1).sound == "b"
+    end
+  end
+
+  # ============================================================================
   # Chaining
   # ============================================================================
 
@@ -613,6 +778,18 @@ defmodule UzuPatternTest do
 
       events = Pattern.query(pattern, 0)
       assert length(events) == 4
+    end
+
+    test "chains Phase 3 functions" do
+      pattern =
+        "bd sd hh cp"
+        |> Pattern.new()
+        |> Pattern.first_of(2, &Pattern.rev/1)
+        |> Pattern.mask("1 1 0 1")
+
+      events = Pattern.query(pattern, 0)
+      # Should be reversed and masked
+      assert length(events) == 3
     end
   end
 end
