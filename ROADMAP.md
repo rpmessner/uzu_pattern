@@ -2,7 +2,7 @@
 
 Pattern orchestration library for Strudel.js-style transformations. This roadmap tracks feature parity with [Strudel.js](https://strudel.cc/).
 
-## ✅ Implemented (v0.2.0)
+## ✅ Implemented (v0.3.0)
 
 ### Core Infrastructure
 - [x] `Pattern` struct with events and transforms
@@ -35,6 +35,15 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 - [x] `rarely/2` - 25% probability
 - [x] `iter/2` - Rotate pattern start each cycle (v0.2.0)
 - [x] `iter_back/2` - Rotate in reverse (v0.2.0)
+- [x] `first_of/3` - Apply on first of N cycles (v0.3.0)
+- [x] `last_of/3` - Apply on last of N cycles (v0.3.0)
+- [x] `when_fn/3` - Apply when condition is true (v0.3.0)
+- [x] `chunk/3` - Apply to rotating chunks (v0.3.0)
+- [x] `chunk_back/3` - Chunk in reverse (v0.3.0)
+
+### Structural Filtering
+- [x] `struct_fn/2` - Apply rhythmic structure (v0.3.0)
+- [x] `mask/2` - Silence based on pattern (v0.3.0)
 
 ### Degradation
 - [x] `degrade/1` - Remove ~50% of events randomly
@@ -44,20 +53,6 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 - [x] `jux/2` - Apply function to right channel
 
 ---
-
-## 🚀 Phase 3: Advanced Conditional (v0.3.0)
-
-Priority: Medium - Enhanced control flow
-
-| Function | Description | Strudel Equivalent |
-|----------|-------------|-------------------|
-| `first_of/3` | Apply on first of N cycles | `firstOf` |
-| `last_of/3` | Apply on last of N cycles | `lastOf` |
-| `when_fn/3` | Apply when condition is true | `when` |
-| `chunk/2` | Apply to rotating chunks | `chunk` |
-| `chunk_back/2` | Chunk in reverse | `chunkBack` |
-| `struct_fn/2` | Apply rhythmic structure | `struct` |
-| `mask/2` | Silence based on pattern | `mask` |
 
 ## 🚀 Phase 4: Effects & Parameters (v0.4.0)
 
