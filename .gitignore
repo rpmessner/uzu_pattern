@@ -19,8 +19,9 @@ erl_crash.dump
 # Also ignore archive artifacts (built via "mix archive.build").
 *.ez
 
-# Ignore package tarball (built via "mix hex.build").
+# Ignore package tarball and unpacked directory (built via "mix hex.build").
 uzu_pattern-*.tar
+uzu_pattern-*/
 
 
 # Dialyzer PLT files

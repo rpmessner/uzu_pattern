@@ -281,6 +281,69 @@ See `ROADMAP.md` for the full feature roadmap. Key upcoming features:
 4. **Phase 5**: Advanced combinators (`superimpose`, `off`, `echo`)
 5. **Phase 6**: Generative rhythm (`euclid`, `swing`)
 
+## Session History
+
+### Session 2025-11-26: Phase 2 Implementation + CI/CD
+
+**Completed Work:**
+
+1. **Phase 2: Extended Time Modifiers (v0.2.0)**
+   - Implemented 6 new functions: `ply/2`, `compress/3`, `zoom/3`, `iter/2`, `iter_back/2`, `linger/2`
+   - Added `{:iter, pos_integer()}` and `{:iter_back, pos_integer()}` to transform typespec
+   - Implemented apply_transform handlers for cycle-aware iter functions
+   - Added comprehensive tests (52 total tests, all passing)
+   - Updated ROADMAP.md to mark Phase 2 as complete
+
+2. **CI/CD Infrastructure**
+   - Created GitHub Actions workflow (`.github/workflows/ci.yml`) with 4 jobs:
+     - Test matrix (Elixir 1.14-1.16 × OTP 25-26)
+     - Format checking
+     - Credo static analysis
+     - Dialyzer type checking
+   - Added dependencies: `credo`, `dialyxir`, `excoveralls`
+   - Created `.credo.exs` configuration (strict mode)
+   - Updated `.formatter.exs` (line_length: 120)
+   - Updated `.gitignore` for PLT files, coverage, IDE files
+
+3. **Documentation**
+   - Created `CHANGELOG.md` (Keep a Changelog format)
+   - Created `CONTRIBUTING.md` (comprehensive contributor guide)
+   - Created `LICENSE` (MIT)
+   - Enhanced ExDoc configuration with module grouping
+   - Updated README.md with Phase 2 examples
+
+4. **Dependency Management**
+   - Changed `uzu_parser` dependency from local path to GitHub
+   - Using `github: "rpmessner/uzu_parser", branch: "main"`
+   - Verified all tests pass with GitHub dependency
+
+**Commits:**
+- `76d5d7a`: Implement Phase 2: Extended Time Modifiers (v0.2.0)
+- `ba191c7`: Add comprehensive CI/CD and documentation infrastructure
+- `adf22f0`: Switch uzu_parser dependency from local path to GitHub
+
+**Key Implementation Details:**
+
+Immediate transforms (modify events directly):
+- `ply/2`: Repeat each event N times within its duration
+- `compress/3`: Fit entire pattern into time segment
+- `zoom/3`: Extract and expand time segment
+- `linger/2`: Extract and repeat fraction of pattern
+
+Deferred transforms (cycle-aware, stored in transforms list):
+- `iter/2`: Rotate pattern segments leftward each cycle
+- `iter_back/2`: Rotate pattern segments rightward each cycle
+
+**Test Coverage:**
+- All 52 tests passing
+- Coverage includes basic functionality, edge cases, property preservation, cycle-aware behavior
+- Examples: ply spacing, compress filtering, zoom extraction, iter rotation, linger fraction extraction
+
+**Version Info:**
+- Version bumped to 0.2.0
+- Elixir requirement broadened to ~> 1.14 for better compatibility
+- Updated package description with new function names
+
 ## Questions?
 
 - Check `ROADMAP.md` for feature status
