@@ -695,6 +695,188 @@ defmodule UzuPattern.Pattern do
     %{pattern | events: all_events}
   end
 
+  @doc """
+  Apply a function to create a partial stereo effect.
+
+  Like jux/2 but allows control over how much the transformed version is panned.
+  Amount ranges from 0.0 (no effect) to 1.0 (full stereo separation).
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.jux_by(0.5, &Pattern.rev/1)
+      iex> length(Pattern.events(pattern))
+      4
+  """
+  def jux_by(%__MODULE__{} = pattern, amount, fun)
+      when is_number(amount) and amount >= 0.0 and amount <= 1.0 and is_function(fun, 1) do
+    left_events = Enum.map(pattern.events, fn e -> %{e | params: Map.put(e.params, :pan, -amount)} end)
+    right_pattern = fun.(pattern)
+    right_events = Enum.map(right_pattern.events, fn e -> %{e | params: Map.put(e.params, :pan, amount)} end)
+
+    all_events = Enum.sort_by(left_events ++ right_events, & &1.time)
+    %{pattern | events: all_events}
+  end
+
+  # ============================================================================
+  # Advanced Combinators (Phase 5)
+  # ============================================================================
+
+  @doc """
+  Append pattern to the end of this pattern.
+
+  The appended pattern starts where this pattern ends.
+
+  ## Examples
+
+      iex> p1 = Pattern.new("bd sd")
+      iex> p2 = Pattern.new("hh cp")
+      iex> pattern = Pattern.append(p1, p2)
+      iex> length(Pattern.events(pattern))
+      4
+  """
+  def append(%__MODULE__{} = pattern, %__MODULE__{} = other) do
+    # Shift other pattern's events to start after this pattern
+    shifted_events =
+      Enum.map(other.events, fn e ->
+        %{e | time: e.time + 1.0}
+      end)
+
+    all_events = Enum.sort_by(pattern.events ++ shifted_events, & &1.time)
+    %{pattern | events: all_events}
+  end
+
+  @doc """
+  Superimpose a transformed version on top of the original pattern.
+
+  Stacks the pattern with a transformed copy of itself.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("c3 eb3 g3") |> Pattern.superimpose(&Pattern.fast(&1, 2))
+      iex> events = Pattern.events(pattern)
+      iex> length(events) > 3
+      true
+  """
+  def superimpose(%__MODULE__{} = pattern, fun) when is_function(fun, 1) do
+    transformed = fun.(pattern)
+    all_events = Enum.sort_by(pattern.events ++ transformed.events, & &1.time)
+    %{pattern | events: all_events}
+  end
+
+  @doc """
+  Superimpose a delayed and transformed copy of the pattern.
+
+  The transformed copy is offset by the given time amount.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("c3 eb3 g3") |> Pattern.off(0.125, &Pattern.fast(&1, 2))
+      iex> length(Pattern.events(pattern)) > 3
+      true
+  """
+  def off(%__MODULE__{} = pattern, time_offset, fun)
+      when is_number(time_offset) and is_function(fun, 1) do
+    transformed = fun.(pattern)
+
+    offset_events =
+      Enum.map(transformed.events, fn e ->
+        new_time = e.time + time_offset
+        wrapped_time = new_time - Float.floor(new_time)
+        %{e | time: wrapped_time}
+      end)
+
+    all_events = Enum.sort_by(pattern.events ++ offset_events, & &1.time)
+    %{pattern | events: all_events}
+  end
+
+  @doc """
+  Create multiple delayed copies with decreasing gain.
+
+  Parameters:
+  - n: number of echoes
+  - time_offset: time between echoes (in cycles)
+  - gain_factor: multiplier for gain reduction (0.0-1.0)
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.echo(3, 0.125, 0.8)
+      iex> length(Pattern.events(pattern)) > 2
+      true
+  """
+  def echo(%__MODULE__{} = pattern, n, time_offset, gain_factor)
+      when is_integer(n) and n > 0 and is_number(time_offset) and is_number(gain_factor) and
+             gain_factor >= 0.0 and gain_factor <= 1.0 do
+    echoes =
+      for i <- 1..n do
+        offset = time_offset * i
+        gain = :math.pow(gain_factor, i)
+
+        Enum.map(pattern.events, fn e ->
+          new_time = e.time + offset
+          wrapped_time = new_time - Float.floor(new_time)
+          current_gain = Map.get(e.params, :gain, 1.0)
+
+          %{e | time: wrapped_time, params: Map.put(e.params, :gain, current_gain * gain)}
+        end)
+      end
+      |> List.flatten()
+
+    all_events = Enum.sort_by(pattern.events ++ echoes, & &1.time)
+    %{pattern | events: all_events}
+  end
+
+  @doc """
+  Slice pattern into N parts and interleave them.
+
+  Each event is divided into slices, creating a stuttering effect.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.striate(4)
+      iex> length(Pattern.events(pattern)) > 2
+      true
+  """
+  def striate(%__MODULE__{} = pattern, n) when is_integer(n) and n > 1 do
+    new_events =
+      pattern.events
+      |> Enum.flat_map(fn event ->
+        slice_duration = event.duration / n
+
+        for i <- 0..(n - 1) do
+          %{event | time: event.time + i * slice_duration, duration: slice_duration}
+        end
+      end)
+      |> Enum.sort_by(& &1.time)
+
+    %{pattern | events: new_events}
+  end
+
+  @doc """
+  Chop pattern into N pieces.
+
+  Divides each event into N equal parts.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.chop(4)
+      iex> length(Pattern.events(pattern)) == 8
+      true
+  """
+  def chop(%__MODULE__{} = pattern, n) when is_integer(n) and n > 1 do
+    new_events =
+      pattern.events
+      |> Enum.flat_map(fn event ->
+        piece_duration = event.duration / n
+
+        for i <- 0..(n - 1) do
+          %{event | time: event.time + i * piece_duration, duration: piece_duration}
+        end
+      end)
+      |> Enum.sort_by(& &1.time)
+
+    %{pattern | events: new_events}
+  end
+
   # ============================================================================
   # Effects & Parameters (Phase 4)
   # ============================================================================
