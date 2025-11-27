@@ -2,7 +2,7 @@
 
 Pattern orchestration library for Strudel.js-style transformations. This roadmap tracks feature parity with [Strudel.js](https://strudel.cc/).
 
-## ✅ Implemented (v0.4.0)
+## ✅ Implemented (v0.6.0)
 
 ### Core Infrastructure
 - [x] `Pattern` struct with events and transforms
@@ -62,32 +62,20 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 - [x] `lpf/2` - Low-pass filter cutoff (v0.4.0)
 - [x] `hpf/2` - High-pass filter cutoff (v0.4.0)
 
----
+### Advanced Combinators
+- [x] `jux_by/3` - Partial jux effect (v0.5.0)
+- [x] `append/2` - Append pattern (v0.5.0)
+- [x] `superimpose/2` - Stack with transformation (v0.5.0)
+- [x] `off/3` - Delayed copy with transform (v0.5.0)
+- [x] `echo/3` - Multiple delayed copies (v0.5.0)
+- [x] `striate/2` - Interleave slices (v0.5.0)
+- [x] `chop/2` - Slice into pieces (v0.5.0)
 
-## 🚀 Phase 5: Advanced Combinators (v0.5.0)
-
-Priority: Low - Nice-to-have
-
-| Function | Description | Strudel Equivalent |
-|----------|-------------|-------------------|
-| `jux_by/3` | Partial jux effect | `juxBy` |
-| `append/2` | Append pattern | `append` |
-| `superimpose/2` | Stack with transformation | `superimpose` |
-| `off/3` | Delayed copy with transform | `off` |
-| `echo/3` | Multiple delayed copies | `echo` |
-| `striate/2` | Interleave slices | `striate` |
-| `chop/2` | Slice into pieces | `chop` |
-
-## 🚀 Phase 6: Advanced Rhythm (v0.6.0)
-
-Priority: Low - Generative features
-
-| Function | Description | Strudel Equivalent |
-|----------|-------------|-------------------|
-| `euclid/3` | Euclidean rhythm | `euclid` |
-| `euclid_rot/4` | Euclidean with rotation | `euclidRot` |
-| `swing/2` | Swing timing | `swing` |
-| `swing_by/3` | Parameterized swing | `swingBy` |
+### Advanced Rhythm
+- [x] `euclid/3` - Euclidean rhythm (v0.6.0)
+- [x] `euclid_rot/4` - Euclidean with rotation (v0.6.0)
+- [x] `swing/2` - Swing timing (v0.6.0)
+- [x] `swing_by/3` - Parameterized swing (v0.6.0)
 
 ---
 
