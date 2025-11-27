@@ -37,20 +37,14 @@ events = Pattern.query(pattern, 0)
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────┐
-│                    HarmonyServer                       │
-│                   (coordination)                       │
-│                                                        │
-│  ┌─────────────────┐     ┌─────────────────┐          │
-│  │   UzuParser     │────▶│   UzuPattern    │          │
-│  │   (parsing)     │     │  (transforms)   │          │
-│  │                 │     │   ◀── HERE      │          │
-│  │ • parse/1       │     │ • fast/slow/rev │          │
-│  │ • mini-notation │     │ • stack/cat     │          │
-│  │ • [%Event{}]    │     │ • every/when    │          │
-│  └─────────────────┘     └─────────────────┘          │
-│                                                        │
-└────────────────────────────┬──────────────────────────┘
+  ┌─────────────────┐     ┌─────────────────┐          
+  │   UzuParser     │────▶│   UzuPattern    │          
+  │   (parsing)     │     │  (transforms)   │          
+  │                 │     │   ◀── HERE      │          
+  │ • parse/1       │     │ • fast/slow/rev │          
+  │ • mini-notation │     │ • stack/cat     │          
+  │ • [%Event{}]    │     │ • every/when    │          
+  └─────────────────┘     └─────────────────┘          
                              │
                              ▼
                    ┌─────────────────┐
@@ -216,8 +210,6 @@ Pattern.stack([kicks, snares, hats])
 
 - [UzuParser](https://github.com/rpmessner/uzu_parser) - Mini-notation parser
 - [Waveform](https://github.com/rpmessner/waveform) - Audio playback via SuperDirt/MIDI
-- [kino_harmony](https://github.com/rpmessner/kino_harmony) - Livebook live coding
-- [harmony_server](https://github.com/rpmessner/harmony_server) - API gateway
 
 ## License
 
