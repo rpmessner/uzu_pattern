@@ -2,7 +2,7 @@
 
 Pattern orchestration library for Strudel.js-style transformations. This roadmap tracks feature parity with [Strudel.js](https://strudel.cc/).
 
-## ✅ Implemented (v0.3.0)
+## ✅ Implemented (v0.4.0)
 
 ### Core Infrastructure
 - [x] `Pattern` struct with events and transforms
@@ -52,22 +52,17 @@ Pattern orchestration library for Strudel.js-style transformations. This roadmap
 ### Stereo
 - [x] `jux/2` - Apply function to right channel
 
+### Effects & Parameters
+- [x] `gain/2` - Set volume (v0.4.0)
+- [x] `pan/2` - Set stereo position (v0.4.0)
+- [x] `speed/2` - Set playback speed (v0.4.0)
+- [x] `cut/2` - Cut group assignment (v0.4.0)
+- [x] `room/2` - Reverb amount (v0.4.0)
+- [x] `delay/2` - Delay amount (v0.4.0)
+- [x] `lpf/2` - Low-pass filter cutoff (v0.4.0)
+- [x] `hpf/2` - High-pass filter cutoff (v0.4.0)
+
 ---
-
-## 🚀 Phase 4: Effects & Parameters (v0.4.0)
-
-Priority: Medium - Sound design
-
-| Function | Description | Strudel Equivalent |
-|----------|-------------|-------------------|
-| `gain/2` | Set volume | `gain` |
-| `pan/2` | Set stereo position | `pan` |
-| `speed/2` | Set playback speed | `speed` |
-| `cut/2` | Cut group assignment | `cut` |
-| `room/2` | Reverb amount | `room` |
-| `delay/2` | Delay amount | `delay` |
-| `lpf/2` | Low-pass filter | `lpf` |
-| `hpf/2` | High-pass filter | `hpf` |
 
 ## 🚀 Phase 5: Advanced Combinators (v0.5.0)
 
