@@ -69,7 +69,6 @@ defmodule UzuPattern.MixProject do
       extras: [
         "README.md",
         "ROADMAP.md",
-        "HANDOFF.md",
         "CHANGELOG.md": [title: "Changelog"],
         "CONTRIBUTING.md": [title: "Contributing"]
       ],
