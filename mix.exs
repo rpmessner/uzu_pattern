@@ -47,12 +47,8 @@ defmodule UzuPattern.MixProject do
   end
 
   defp description do
-    """
-    Pattern orchestration library for Strudel.js-style transformations.
-    Provides time modifiers, combinators, conditional transforms, effects, and rhythmic functions.
-    Includes euclid, swing, echo, striate, chunk, iter, gain, pan, lpf, hpf, and 42 more functions.
-    Works with UzuParser for mini-notation parsing. 52 pattern transformation & parameter functions.
-    """
+    "Pattern orchestration library for Strudel.js-style transformations. " <>
+      "Time modifiers, combinators, effects, and rhythmic functions. Works with UzuParser."
   end
 
   defp package do
