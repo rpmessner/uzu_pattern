@@ -882,10 +882,10 @@ defmodule UzuPatternTest do
     end
 
     test "accepts full frequency range" do
-      pattern = Pattern.new("bd") |> Pattern.lpf(20000)
+      pattern = Pattern.new("bd") |> Pattern.lpf(20_000)
       events = Pattern.events(pattern)
 
-      assert hd(events).params[:lpf] == 20000
+      assert hd(events).params[:lpf] == 20_000
     end
   end
 
@@ -898,10 +898,10 @@ defmodule UzuPatternTest do
     end
 
     test "accepts full frequency range" do
-      pattern = Pattern.new("bd") |> Pattern.hpf(20000)
+      pattern = Pattern.new("bd") |> Pattern.hpf(20_000)
       events = Pattern.events(pattern)
 
-      assert hd(events).params[:hpf] == 20000
+      assert hd(events).params[:hpf] == 20_000
     end
   end
 
@@ -1090,10 +1090,14 @@ defmodule UzuPatternTest do
       # Euclidean(3,8) = [1,0,0,1,0,0,1,0] has pulses at positions 0,3,6
       # With 10 events, indices 0,3,6 match, plus index 8 wraps to position 0
       assert length(events) == 4
-      assert Enum.at(events, 0).sound == "a"  # index 0
-      assert Enum.at(events, 1).sound == "d"  # index 3
-      assert Enum.at(events, 2).sound == "g"  # index 6
-      assert Enum.at(events, 3).sound == "i"  # index 8
+      # index 0
+      assert Enum.at(events, 0).sound == "a"
+      # index 3
+      assert Enum.at(events, 1).sound == "d"
+      # index 6
+      assert Enum.at(events, 2).sound == "g"
+      # index 8
+      assert Enum.at(events, 3).sound == "i"
     end
   end
 
@@ -1119,7 +1123,7 @@ defmodule UzuPatternTest do
       sounds1 = Enum.map(events1, fn e -> e.sound end)
       sounds2 = Enum.map(events2, fn e -> e.sound end)
       # Rotation should create different selection pattern
-      assert sounds1 != sounds2 or length(sounds1) == 0
+      assert sounds1 != sounds2 or sounds1 == []
     end
   end
 

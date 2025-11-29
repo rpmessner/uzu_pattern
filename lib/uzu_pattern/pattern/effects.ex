@@ -139,7 +139,7 @@ defmodule UzuPattern.Pattern.Effects do
       iex> Enum.all?(events, fn e -> e.params[:lpf] == 1000 end)
       true
   """
-  def lpf(%Pattern{} = pattern, frequency) when is_number(frequency) and frequency >= 0 and frequency <= 20000 do
+  def lpf(%Pattern{} = pattern, frequency) when is_number(frequency) and frequency >= 0 and frequency <= 20_000 do
     new_events = Enum.map(pattern.events, fn e -> %{e | params: Map.put(e.params, :lpf, frequency)} end)
     %{pattern | events: new_events}
   end
@@ -157,7 +157,7 @@ defmodule UzuPattern.Pattern.Effects do
       iex> Enum.all?(events, fn e -> e.params[:hpf] == 1000 end)
       true
   """
-  def hpf(%Pattern{} = pattern, frequency) when is_number(frequency) and frequency >= 0 and frequency <= 20000 do
+  def hpf(%Pattern{} = pattern, frequency) when is_number(frequency) and frequency >= 0 and frequency <= 20_000 do
     new_events = Enum.map(pattern.events, fn e -> %{e | params: Map.put(e.params, :hpf, frequency)} end)
     %{pattern | events: new_events}
   end

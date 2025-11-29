@@ -1,4 +1,6 @@
 defmodule UzuPattern.Pattern.Structure do
+  alias UzuPattern.Pattern.Combinators
+
   @moduledoc """
   Structural pattern manipulation functions.
 
@@ -56,7 +58,7 @@ defmodule UzuPattern.Pattern.Structure do
       6
   """
   def palindrome(%Pattern{} = pattern) do
-    UzuPattern.Pattern.Combinators.cat([pattern, rev(pattern)])
+    Combinators.cat([pattern, rev(pattern)])
   end
 
   @doc """
