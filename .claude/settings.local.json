@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:strudel.cc)",
+      "Bash(mix test)",
+      "Bash(iex -S mix)",
+      "Bash(mix test:*)",
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix format:*)",
+      "Bash(mix docs:*)",
+      "Bash(mix clean:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd comprehensive CI/CD and documentation infrastructure\n\nCI/CD Setup:\n- GitHub Actions workflow with test matrix (Elixir 1.14-1.16, OTP 25-26)\n- Automated testing, formatting, Credo analysis, and Dialyzer checks\n- Code coverage tracking with ExCoveralls\n- Separate jobs for format, credo, dialyzer, and tests\n- Caching for dependencies and PLT files\n\nCode Quality Tools:\n- Credo configuration (.credo.exs) with strict checks enabled\n- Dialyzer setup with PLT file configuration\n- Code formatter with 120 character line length\n- Updated .gitignore for PLT files, coverage, and IDE files\n\nDocumentation:\n- CHANGELOG.md following Keep a Changelog format\n- CONTRIBUTING.md with comprehensive contributor guidelines\n- LICENSE file (MIT)\n- Enhanced ExDoc configuration with module grouping\n- Documentation for all 52 tests passing\n\nProject Updates:\n- Version bump to 0.2.0\n- Elixir requirement broadened to ~> 1.14 for better compatibility\n- Enhanced package description with new function names\n- Added dependencies: credo, dialyxir, excoveralls\n\nThe CI pipeline ensures:\n✅ All tests pass across multiple Elixir/OTP versions\n✅ Code is properly formatted\n✅ No static analysis issues\n✅ Type specifications are correct\n✅ Test coverage is maintained\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(tree:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:userbase.tidalcycles.org)",
+      "Bash(iex -S mix -e:*)",
+      "Bash(mix credo:*)",
+      "Bash(mix dialyzer:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
