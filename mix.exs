@@ -1,7 +1,7 @@
 defmodule UzuPattern.MixProject do
   use Mix.Project
 
-  @version "0.6.0"
+  @version "0.7.0"
   @source_url "https://github.com/rpmessner/uzu_pattern"
 
   def project do
@@ -17,15 +17,20 @@ defmodule UzuPattern.MixProject do
       name: "UzuPattern",
       source_url: @source_url,
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        plt_add_apps: [:mix]
+      ]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
         coveralls: :test,
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test
-      ],
-      dialyzer: [
-        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
-        plt_add_apps: [:mix]
       ]
     ]
   end
@@ -65,9 +70,7 @@ defmodule UzuPattern.MixProject do
       main: "readme",
       extras: [
         "README.md",
-        "ROADMAP.md",
-        "CHANGELOG.md": [title: "Changelog"],
-        "CONTRIBUTING.md": [title: "Contributing"]
+        "CHANGELOG.md": [title: "Changelog"]
       ],
       groups_for_modules: [
         Core: [UzuPattern, UzuPattern.Pattern],

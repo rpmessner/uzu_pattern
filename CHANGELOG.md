@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2025-12-07
+
+### Changed
+- Updated uzu_parser dependency to ~> 0.5.0 (NimbleParsec rewrite with source position tracking)
+- Fixed mix.exs deprecation warning for preferred_cli_env
+
+### Infrastructure
+- CI matrix updated for valid Elixir/OTP combinations (1.17+OTP27, 1.18+OTP27, 1.19+OTP27/28)
+- Added lefthook for pre-commit formatting
+- Added CLAUDE.md project documentation
+
 ## [0.6.0] - 2025-11-27
 
 ### Added
@@ -204,6 +215,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ExDoc documentation generation
 
 [Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.6.0...HEAD
+[0.7.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.3.0...v0.4.0
