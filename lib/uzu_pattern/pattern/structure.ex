@@ -27,9 +27,22 @@ defmodule UzuPattern.Pattern.Structure do
   alias UzuPattern.Pattern
 
   @doc """
-  Reverse the order of events in a pattern.
+  Reverse the pattern so it plays backwards.
+
+  A simple but powerful transformation - creates mirror images
+  of rhythms and melodies, useful for call-and-response or
+  building tension.
 
   ## Examples
+
+      # Backwards melody
+      note("c4 e4 g4 c5") |> s("piano") |> rev()
+
+      # Combine forward and backward for palindrome
+      s("bd sd hh cp") |> palindrome()
+
+      # Alternate between normal and reversed
+      s("bd sd hh cp") |> every(2, &rev/1)
 
       iex> pattern = Pattern.new("bd sd hh") |> Pattern.Structure.rev()
       iex> events = Pattern.events(pattern)
@@ -126,12 +139,24 @@ defmodule UzuPattern.Pattern.Structure do
   @doc """
   Randomly remove events with a given probability.
 
-  Unlike `sometimes_by`, this operates on individual events, not the whole pattern.
+  Creates organic variation by randomly dropping sounds. Great for
+  glitchy textures, sparse ambient patterns, or adding unpredictability.
+
+  Unlike `sometimes_by` (which applies to whole patterns per cycle),
+  `degrade_by` affects individual events within the pattern.
 
   ## Examples
 
+      # Sparse hi-hats - remove ~30% randomly
+      s("hh*8") |> degrade_by(0.3)
+
+      # Heavily degraded texture
+      note("c4 d4 e4 f4 g4 a4 b4 c5") |> s("sine") |> degrade_by(0.6)
+
+      # Subtle variation
+      s("bd sd hh cp") |> degrade_by(0.1)
+
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Structure.degrade_by(0.5)
-      iex> # ~50% of events removed (randomly)
   """
   def degrade_by(%Pattern{} = pattern, probability)
       when is_float(probability) and probability >= 0.0 and probability <= 1.0 do
@@ -151,11 +176,24 @@ defmodule UzuPattern.Pattern.Structure do
   end
 
   @doc """
-  Apply a function to create a stereo effect.
+  Create a stereo effect by playing original and transformed versions in different ears.
 
-  Creates two copies of the pattern: original panned left, transformed panned right.
+  Original plays on the left, transformed version plays on the right.
+  Creates wide, immersive stereo images and interesting phase effects.
+
+  This is one of the most popular Tidal/Strudel effects for adding
+  depth and movement to patterns.
 
   ## Examples
+
+      # Reversed melody in right ear
+      note("c4 e4 g4 c5") |> s("piano") |> jux(&rev/1)
+
+      # Double-speed in right ear
+      s("bd sd hh cp") |> jux(&fast(&1, 2))
+
+      # Higher pitch in right ear
+      note("c3 e3 g3") |> s("sine") |> jux(fn p -> note(p, "c4 e4 g4") end)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Structure.jux(&Pattern.Structure.rev/1)
       iex> length(Pattern.events(pattern))

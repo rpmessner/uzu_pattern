@@ -31,9 +31,21 @@ defmodule UzuPattern.Pattern.Combinators do
   alias UzuPattern.Pattern
 
   @doc """
-  Stack multiple patterns to play simultaneously.
+  Layer multiple patterns to play at the same time.
+
+  Stack is fundamental for building up complex beats from simple parts.
+  Each pattern plays simultaneously, like tracks in a DAW.
 
   ## Examples
+
+      # Classic drum pattern - kick, snare, and hi-hats together
+      s("bd ~ bd ~") |> stack(s("~ sd ~ sd")) |> stack(s("hh*8"))
+
+      # Layer a bass with chords
+      note("c2") |> s("bass") |> stack(note("[c4,e4,g4]") |> s("piano"))
+
+      # Using list form
+      stack([s("bd*4"), s("hh*8"), s("~ sd ~ sd")])
 
       iex> p1 = Pattern.new("bd")
       iex> p2 = Pattern.new("sd")
@@ -51,9 +63,22 @@ defmodule UzuPattern.Pattern.Combinators do
   end
 
   @doc """
-  Concatenate patterns to play sequentially.
+  Join patterns to play one after another in sequence.
+
+  `cat` divides the cycle between the patterns, so each gets
+  an equal share of time. Use for creating longer phrases
+  that evolve over the cycle.
 
   ## Examples
+
+      # Verse and chorus in one cycle
+      s("bd sd") |> cat([s("bd*4")])  # First half simple, second half busy
+
+      # A-B pattern structure
+      cat([note("c4 e4"), note("g4 c5")])
+
+      # Four-part sequence
+      cat([s("bd"), s("sd"), s("hh"), s("cp")])
 
       iex> p1 = Pattern.new("bd")
       iex> p2 = Pattern.new("sd")
@@ -119,11 +144,22 @@ defmodule UzuPattern.Pattern.Combinators do
   end
 
   @doc """
-  Superimpose a transformed version on top of the original pattern.
+  Layer the original pattern with a transformed copy of itself.
 
-  Stacks the pattern with a transformed copy of itself.
+  Superimpose is perfect for creating thickness and movement
+  by combining the original with a modified version - like adding
+  a harmony or rhythmic variation on top.
 
   ## Examples
+
+      # Original plus double-speed version
+      s("bd sd hh cp") |> superimpose(&fast(&1, 2))
+
+      # Add a delayed, quieter copy
+      note("c4 e4 g4") |> superimpose(&(late(&1, 0.125) |> gain(&1, 0.5)))
+
+      # Layer with pitch-shifted version
+      note("c3 e3 g3") |> s("sine") |> superimpose(&note(&1, "c4 e4 g4"))
 
       iex> pattern = Pattern.new("c3 eb3 g3") |> Pattern.Combinators.superimpose(&UzuPattern.Pattern.Time.fast(&1, 2))
       iex> events = Pattern.events(pattern)
@@ -163,14 +199,27 @@ defmodule UzuPattern.Pattern.Combinators do
   end
 
   @doc """
-  Create multiple delayed copies with decreasing gain.
+  Create rhythmic echoes that fade out over time.
+
+  Unlike the `delay` effect (which uses the audio engine), `echo`
+  creates actual copies of events in the pattern, each quieter
+  than the last.
 
   Parameters:
-  - n: number of echoes
-  - time_offset: time between echoes (in cycles)
-  - gain_factor: multiplier for gain reduction (0.0-1.0)
+  - `n`: how many echoes
+  - `time_offset`: time between echoes (fraction of cycle)
+  - `gain_factor`: how much quieter each echo gets (0.8 = 20% quieter)
 
   ## Examples
+
+      # Snare with 3 fading echoes
+      s("~ sd ~ ~") |> echo(3, 0.125, 0.6)
+
+      # Melodic echoes for arpeggio effect
+      note("c4") |> s("piano") |> echo(4, 0.25, 0.7)
+
+      # Stutter effect with rapid quiet echoes
+      s("bd") |> echo(6, 0.0625, 0.5)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Combinators.echo(3, 0.125, 0.8)
       iex> length(Pattern.events(pattern)) > 2

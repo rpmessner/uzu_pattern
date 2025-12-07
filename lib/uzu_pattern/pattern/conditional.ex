@@ -29,20 +29,51 @@ defmodule UzuPattern.Pattern.Conditional do
   alias UzuPattern.Pattern
 
   @doc """
-  Apply a function every N cycles.
+  Apply a transformation every N cycles, creating evolving patterns.
 
-  This is a cycle-aware transformation - the function is applied based on
-  the cycle number when `query/2` is called.
+  This is one of the most essential functions for live coding - it makes
+  patterns change over time, creating builds, drops, and variations
+  automatically.
 
   ## Examples
 
+      # Reverse every 4th bar
+      s("bd sd hh cp") |> every(4, &rev/1)
+
+      # Double-speed fill every 8 bars
+      s("bd*4") |> every(8, &fast(&1, 2))
+
+      # Add reverb every other cycle
+      s("~ sd ~ sd") |> every(2, &room(&1, 0.5))
+
+      # Chain multiple every patterns
+      s("hh*8") |> every(3, &fast(&1, 2)) |> every(4, &gain(&1, 0.5))
+
       iex> pattern = Pattern.new("bd sd") |> Pattern.Conditional.every(4, &UzuPattern.Pattern.Structure.rev/1)
-      iex> # On cycle 0, 4, 8... the pattern is reversed
       iex> Pattern.query(pattern, 0) |> length()
       2
   """
   def every(%Pattern{} = pattern, n, fun) when is_integer(n) and n > 0 and is_function(fun, 1) do
     transform = {:every, n, fun}
+    %{pattern | transforms: pattern.transforms ++ [transform]}
+  end
+
+  @doc """
+  Apply a function every N cycles, starting at a given offset.
+
+  The offset determines which cycle within the N-cycle group triggers the transform.
+  - `every(pattern, 4, 0, f)` - apply on cycles 0, 4, 8, 12... (same as every/3)
+  - `every(pattern, 4, 1, f)` - apply on cycles 1, 5, 9, 13...
+  - `every(pattern, 4, 3, f)` - apply on cycles 3, 7, 11, 15...
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.Conditional.every(4, 2, &UzuPattern.Pattern.Structure.rev/1)
+      iex> # On cycles 2, 6, 10... the pattern is reversed
+  """
+  def every(%Pattern{} = pattern, n, offset, fun)
+      when is_integer(n) and n > 0 and is_integer(offset) and offset >= 0 and offset < n and is_function(fun, 1) do
+    transform = {:every_offset, n, offset, fun}
     %{pattern | transforms: pattern.transforms ++ [transform]}
   end
 
@@ -61,9 +92,21 @@ defmodule UzuPattern.Pattern.Conditional do
   end
 
   @doc """
-  Apply a function with 50% probability per cycle.
+  Apply a transformation 50% of the time (randomly per cycle).
+
+  Adds organic variation - the pattern changes unpredictably but
+  not too often. Great for subtle humanization and keeping things interesting.
 
   ## Examples
+
+      # Sometimes reverse the pattern
+      s("bd sd hh cp") |> sometimes(&rev/1)
+
+      # Sometimes add reverb
+      s("~ sd ~ sd") |> sometimes(&room(&1, 0.5))
+
+      # Sometimes speed up
+      s("hh*4") |> sometimes(&fast(&1, 2))
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Conditional.sometimes(&UzuPattern.Pattern.Structure.rev/1)
   """
@@ -72,35 +115,47 @@ defmodule UzuPattern.Pattern.Conditional do
   end
 
   @doc """
-  Apply a function with 75% probability per cycle.
+  Apply a transformation 75% of the time (more often than `sometimes`).
+
+  Use when you want the effect most of the time with occasional breaks.
   """
   def often(%Pattern{} = pattern, fun) when is_function(fun, 1) do
     sometimes_by(pattern, 0.75, fun)
   end
 
   @doc """
-  Apply a function with 25% probability per cycle.
+  Apply a transformation 25% of the time (less often than `sometimes`).
+
+  Use for occasional surprises or rare variations.
   """
   def rarely(%Pattern{} = pattern, fun) when is_function(fun, 1) do
     sometimes_by(pattern, 0.25, fun)
   end
 
   @doc """
-  Rotate the pattern start position each cycle.
+  Rotate the pattern's starting point each cycle, creating a shifting feel.
 
-  Divides the pattern into N subdivisions and shifts the starting point by
-  one subdivision each cycle. Creates evolving patterns.
+  The pattern "walks" through its elements over time. If you have 4 sounds
+  and use `iter(4)`, each cycle starts on the next sound.
 
-  This is a cycle-aware transformation - resolved at query time.
+  Creates hypnotic, evolving grooves that shift phase over time -
+  essential for minimal techno and polyrhythmic patterns.
 
   ## Examples
 
+      # Walking bass pattern - shifts each bar
+      note("c2 e2 g2 b2") |> s("bass") |> iter(4)
+
+      # Rotating drum pattern
+      s("bd sd hh cp") |> iter(4)
+
+      # Combined with other modifiers
+      s("bd sd hh cp") |> iter(4) |> every(4, &fast(&1, 2))
+
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Conditional.iter(4)
-      iex> # Cycle 0: starts at bd (subdivision 0)
-      iex> # Cycle 1: starts at sd (subdivision 1)
-      iex> # Cycle 2: starts at hh (subdivision 2)
-      iex> # Cycle 3: starts at cp (subdivision 3)
-      iex> # Cycle 4: wraps back to bd
+      # Cycle 0: bd sd hh cp
+      # Cycle 1: sd hh cp bd  (rotated by 1)
+      # Cycle 2: hh cp bd sd  (rotated by 2)
   """
   def iter(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
     transform = {:iter, n}

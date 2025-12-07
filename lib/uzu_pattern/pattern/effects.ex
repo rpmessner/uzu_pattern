@@ -25,11 +25,39 @@ defmodule UzuPattern.Pattern.Effects do
   alias UzuPattern.Pattern
 
   @doc """
-  Set the gain (volume) for all events in the pattern.
+  Set an arbitrary parameter for all events in the pattern.
 
-  Gain controls volume amplitude. Applied after ADSR envelope.
+  This is the generic version that allows setting any key/value pair.
+  Specific functions like `gain/2`, `pan/2` provide convenience and validation.
 
   ## Examples
+
+      iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.set_param(:foo, 42)
+      iex> events = Pattern.events(pattern)
+      iex> Enum.all?(events, fn e -> e.params[:foo] == 42 end)
+      true
+  """
+  def set_param(%Pattern{} = pattern, key, value) when is_atom(key) do
+    new_events = Enum.map(pattern.events, fn e -> %{e | params: Map.put(e.params, key, value)} end)
+    %{pattern | events: new_events}
+  end
+
+  @doc """
+  Set the volume for all events in the pattern.
+
+  Values typically range from 0.0 (silent) to 1.0 (full volume).
+  Values above 1.0 are allowed for boosting quiet samples.
+
+  ## Examples
+
+      # Quiet background hi-hats
+      s("hh*8") |> gain(0.3)
+
+      # Emphasize the kick drum
+      s("bd") |> gain(0.9) |> stack(s("sd hh") |> gain(0.5))
+
+      # Fade out over pattern
+      note("c4 e4 g4 c5") |> gain("1 0.8 0.6 0.4")
 
       iex> pattern = Pattern.new("bd sd hh") |> Pattern.Effects.gain(0.5)
       iex> events = Pattern.events(pattern)
@@ -42,11 +70,25 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the stereo pan position for all events in the pattern.
+  Set the stereo pan position for all events.
 
-  Pan range: 0.0 (left) to 1.0 (right), 0.5 is center.
+  - 0.0 = hard left
+  - 0.5 = center (default)
+  - 1.0 = hard right
+
+  Create width and movement in your mix by spreading sounds across
+  the stereo field.
 
   ## Examples
+
+      # Hi-hats panned right
+      s("hh*4") |> pan(0.8)
+
+      # Alternating left-right pattern
+      note("c4 e4 g4 c5") |> pan("0.2 0.8 0.2 0.8")
+
+      # Keep bass centered, spread highs
+      s("bd") |> pan(0.5) |> stack(s("hh") |> pan(0.9))
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.pan(0.5)
       iex> events = Pattern.events(pattern)
@@ -59,11 +101,26 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the playback speed for all events in the pattern.
+  Set the playback speed of samples, affecting pitch.
 
-  Speed multiplier: 1.0 is normal, 2.0 is double speed, 0.5 is half speed.
+  - 1.0 = normal speed and pitch
+  - 2.0 = double speed, one octave higher
+  - 0.5 = half speed, one octave lower
+  - Negative values play in reverse
+
+  For samples, speed changes both tempo and pitch. Use for pitch
+  shifting, time-stretching effects, or playing samples backwards.
 
   ## Examples
+
+      # Pitch up a break
+      s("breaks") |> speed(1.5)
+
+      # Play sample backwards
+      s("vocal") |> speed(-1)
+
+      # Varying speeds for texture
+      s("bd") |> speed("1 0.5 1.5 0.75")
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.speed(2.0)
       iex> events = Pattern.events(pattern)
@@ -76,11 +133,18 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the cut group for all events in the pattern.
+  Assign events to a cut group - new events cut off previous ones in the same group.
 
-  Events with the same cut group will stop previous events in that group.
+  Essential for realistic hi-hat patterns where an open hi-hat is cut
+  by a closed one, or for gating long samples.
 
   ## Examples
+
+      # Closed hi-hat cuts off open hi-hat
+      s("hh:1 hh:0 hh:1 hh:0") |> cut(1)
+
+      # Long pad sample cut by retriggering
+      s("pad:long") |> cut(2)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.cut(1)
       iex> events = Pattern.events(pattern)
@@ -93,11 +157,25 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the reverb amount for all events in the pattern.
+  Add reverb to the pattern, placing sounds in a virtual space.
 
-  Room range: 0.0 (dry) to 1.0 (wet).
+  - 0.0 = completely dry (no reverb)
+  - 0.5 = balanced mix
+  - 1.0 = fully wet (all reverb)
+
+  Creates depth and atmosphere. Use sparingly on drums, more on
+  melodic elements.
 
   ## Examples
+
+      # Snare with room ambience
+      s("~ sd ~ sd") |> room(0.3)
+
+      # Ambient pad with lots of reverb
+      note("c3 eb3 g3") |> s("sine") |> room(0.8)
+
+      # Dry kick, wet everything else
+      s("bd") |> stack(s("hh sd") |> room(0.4))
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.room(0.5)
       iex> events = Pattern.events(pattern)
@@ -110,11 +188,25 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the delay amount for all events in the pattern.
+  Add echo/delay effect to the pattern.
 
-  Delay range: 0.0 (dry) to 1.0 (wet).
+  - 0.0 = no delay
+  - 0.5 = balanced dry/wet mix
+  - 1.0 = fully delayed signal
+
+  Creates rhythmic echoes that sync to the tempo. Great for dub
+  effects, thickening sounds, or creating polyrhythmic textures.
 
   ## Examples
+
+      # Dub-style delay on snare
+      s("~ sd ~ ~") |> delay(0.5)
+
+      # Subtle thickening on melody
+      note("c4 e4 g4") |> s("piano") |> delay(0.2)
+
+      # Delay on hi-hats for texture
+      s("hh*4") |> delay(0.3) |> gain(0.6)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.delay(0.25)
       iex> events = Pattern.events(pattern)
@@ -127,12 +219,24 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the low-pass filter cutoff frequency for all events.
+  Apply a low-pass filter, cutting high frequencies above the cutoff.
 
-  LPF allows low frequencies to pass, cutting high frequencies.
-  Frequency range: 0 to 20000 Hz.
+  - Lower values = darker, more muffled sound
+  - Higher values (10000+) = brighter, more open
+  - 20000 = essentially no filtering
+
+  Essential for creating movement, builds, and that classic filter sweep.
 
   ## Examples
+
+      # Muffled kick drum
+      s("bd*4") |> lpf(500)
+
+      # Filter sweep on melody
+      note("c4 e4 g4") |> lpf("200 500 1000 2000")
+
+      # Acid bassline filter
+      note("c2*8") |> s("sawtooth") |> lpf("100 400 800 400")
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.lpf(1000)
       iex> events = Pattern.events(pattern)
@@ -145,12 +249,24 @@ defmodule UzuPattern.Pattern.Effects do
   end
 
   @doc """
-  Set the high-pass filter cutoff frequency for all events.
+  Apply a high-pass filter, cutting low frequencies below the cutoff.
 
-  HPF allows high frequencies to pass, cutting low frequencies.
-  Frequency range: 0 to 20000 Hz.
+  - Lower values (20-100) = subtle low-end cleanup
+  - Mid values (200-500) = thinner, more focused sound
+  - Higher values = telephone/radio effect
+
+  Useful for cleaning up muddy mixes or creating contrast.
 
   ## Examples
+
+      # Remove low rumble from hi-hats
+      s("hh*8") |> hpf(300)
+
+      # Radio effect on vocal
+      s("vocal") |> hpf(500) |> lpf(3000)
+
+      # Buildups - sweep the high-pass up
+      s("breaks") |> hpf("100 500 1000 2000")
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Effects.hpf(1000)
       iex> events = Pattern.events(pattern)

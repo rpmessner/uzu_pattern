@@ -27,9 +27,24 @@ defmodule UzuPattern.Pattern.Time do
   alias UzuPattern.Pattern
 
   @doc """
-  Speed up a pattern by a factor.
+  Speed up a pattern by a factor, making it play faster.
+
+  `fast(2)` doubles the speed, fitting the pattern twice per cycle.
+  `fast(4)` quadruples the speed, fitting it four times per cycle.
+
+  This is one of the most essential pattern functions - use it to create
+  rapid rhythms, fills, or to match different patterns together.
 
   ## Examples
+
+      # Double-time hi-hats
+      s("hh") |> fast(2)
+
+      # Create a drum roll by speeding up 4x
+      s("bd") |> fast(4)
+
+      # Fractional values work too - 1.5x speed
+      s("bd sd hh cp") |> fast(1.5)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Time.fast(2)
       iex> events = Pattern.events(pattern)
@@ -48,9 +63,21 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Slow down a pattern by a factor.
+  Slow down a pattern by a factor, stretching it over more cycles.
+
+  `slow(2)` halves the speed - the pattern takes 2 cycles to complete.
+  `slow(4)` plays the pattern over 4 cycles.
+
+  Useful for creating longer phrases, ambient textures, or making
+  melodic patterns span multiple bars.
 
   ## Examples
+
+      # Stretch a melody over 2 bars
+      note("c4 e4 g4 c5") |> s("piano") |> slow(2)
+
+      # Create a long evolving drone
+      note("c2") |> s("sine") |> slow(8)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Time.slow(2)
       iex> events = Pattern.events(pattern)
@@ -68,9 +95,18 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Shift pattern earlier by a number of cycles (wraps around).
+  Shift pattern earlier in time (wraps around the cycle).
+
+  Use to create anticipation effects or offset patterns against each other.
+  The amount is in fractions of a cycle (0.25 = one quarter beat early).
 
   ## Examples
+
+      # Anticipate the downbeat by 1/8 cycle
+      s("bd") |> early(0.125)
+
+      # Offset two patterns to create call-and-response
+      s("bd sd") |> stack(s("hh hh") |> early(0.25))
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Time.early(0.25)
       iex> events = Pattern.events(pattern)
@@ -91,9 +127,18 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Shift pattern later by a number of cycles (wraps around).
+  Shift pattern later in time (wraps around the cycle).
+
+  Use for laid-back feels, delay effects, or offsetting patterns.
+  The amount is in fractions of a cycle (0.25 = one quarter beat late).
 
   ## Examples
+
+      # Create a lazy/laid-back snare
+      s("~ sd ~ sd") |> late(0.05)
+
+      # Offset hi-hats for groove
+      s("hh*4") |> late(0.0625)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Time.late(0.25)
       iex> events = Pattern.events(pattern)
@@ -105,18 +150,27 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Repeat each event N times within its duration.
+  Repeat each event N times within its duration, creating rolls and stutters.
 
-  Creates rapid repetitions of each event, useful for rolls and stutters.
-  Each repetition fits within the original event's time slot.
+  Unlike `fast`, which speeds up the whole pattern, `ply` repeats each
+  individual event in place. Great for drum rolls, glitchy effects, or
+  adding rhythmic complexity.
 
   ## Examples
+
+      # Snare roll - each snare repeats 4 times
+      s("~ sd ~ sd") |> ply(4)
+
+      # Stuttering hi-hats
+      s("hh*4") |> ply(2)
+
+      # Combine with fast for complex rhythms
+      s("bd sd") |> fast(2) |> ply(2)
 
       iex> pattern = Pattern.new("bd sd") |> Pattern.Time.ply(2)
       iex> events = Pattern.events(pattern)
       iex> length(events)
       4
-      iex> # First event at 0.0, second at 0.125 (half of 0.25 duration)
   """
   def ply(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
     new_events =
@@ -134,16 +188,27 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Compress the pattern into a time segment within the cycle.
+  Squeeze the pattern into a portion of the cycle, leaving silence elsewhere.
 
-  Squeezes all events into the time range [start, end], leaving the rest
-  of the cycle as silence. Useful for creating rhythmic gaps.
+  `compress(0.0, 0.5)` plays the full pattern in the first half, then silence.
+  `compress(0.25, 0.75)` plays the pattern in the middle half of the cycle.
+
+  Great for creating gaps, breaks, or fitting patterns into specific
+  parts of a bar.
 
   ## Examples
 
+      # Play drums only in first half of cycle
+      s("bd sd hh cp") |> compress(0.0, 0.5)
+
+      # Create a breakdown with silence
+      s("bd*4") |> compress(0.0, 0.25)
+
+      # Play in the middle 50%
+      note("c4 e4 g4") |> s("sine") |> compress(0.25, 0.75)
+
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Time.compress(0.25, 0.75)
       iex> events = Pattern.events(pattern)
-      iex> # All events now fit between 0.25 and 0.75
       iex> Enum.all?(events, fn e -> e.time >= 0.25 and e.time < 0.75 end)
       true
   """
@@ -162,16 +227,24 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Extract and expand a time segment of the pattern.
+  Zoom into a portion of the pattern and expand it to fill the cycle.
 
-  Zooms into a specific portion of the pattern [start, end] and stretches it
-  to fill the entire cycle. This is the inverse of compress.
+  `zoom(0.0, 0.5)` takes the first half of the pattern and stretches it.
+  `zoom(0.25, 0.75)` extracts the middle portion and expands it.
+
+  The inverse of `compress` - useful for focusing on part of a pattern
+  or creating variations by sampling different sections.
 
   ## Examples
 
+      # Focus on just the first half of the pattern
+      s("bd sd hh cp") |> zoom(0.0, 0.5)  # Just "bd sd" expanded
+
+      # Extract the middle section
+      note("c4 d4 e4 f4 g4") |> zoom(0.25, 0.75)
+
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Time.zoom(0.25, 0.75)
       iex> events = Pattern.events(pattern)
-      iex> # Middle half of pattern (sd, hh) expanded to full cycle
       iex> length(events)
       2
   """
@@ -197,22 +270,27 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Repeat a fraction of the pattern to fill the cycle.
+  Repeat the first portion of a pattern to fill the whole cycle.
 
-  Selects the given fraction of the pattern (from start) and repeats it
-  to fill the remainder of the cycle. Also known as fastgap in Strudel.
+  `linger(0.5)` takes the first half and repeats it twice.
+  `linger(0.25)` takes the first quarter and repeats it 4 times.
+
+  Creates hypnotic, looping effects by focusing on a small fragment.
+  Also known as `fastgap` in Strudel/TidalCycles.
 
   ## Examples
 
+      # Loop just the kick drum
+      s("bd sd hh cp") |> linger(0.25)  # "bd bd bd bd"
+
+      # Create a hypnotic 2-note loop from a longer phrase
+      note("c4 e4 g4 c5") |> linger(0.5)  # "c4 e4 c4 e4"
+
+      # Micro-loop for glitchy effects
+      s("breaks") |> linger(0.125)
+
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Time.linger(0.5)
       iex> events = Pattern.events(pattern)
-      iex> # First half (bd sd) repeated twice to fill cycle
-      iex> length(events)
-      4
-
-      iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Time.linger(0.25)
-      iex> events = Pattern.events(pattern)
-      iex> # First quarter (bd) repeated 4 times
       iex> length(events)
       4
   """

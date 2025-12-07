@@ -68,6 +68,7 @@ defmodule UzuPattern.Pattern do
 
   @type transform ::
           {:every, pos_integer(), function()}
+          | {:every_offset, pos_integer(), non_neg_integer(), function()}
           | {:sometimes_by, float(), function()}
           | {:when, function(), function()}
           | {:iter, pos_integer()}
@@ -198,6 +199,7 @@ defmodule UzuPattern.Pattern do
 
   # Conditional modifiers
   defdelegate every(pattern, n, fun), to: UzuPattern.Pattern.Conditional
+  defdelegate every(pattern, n, offset, fun), to: UzuPattern.Pattern.Conditional
   defdelegate sometimes_by(pattern, probability, fun), to: UzuPattern.Pattern.Conditional
   defdelegate sometimes(pattern, fun), to: UzuPattern.Pattern.Conditional
   defdelegate often(pattern, fun), to: UzuPattern.Pattern.Conditional
@@ -211,6 +213,7 @@ defmodule UzuPattern.Pattern do
   defdelegate chunk_back(pattern, n, fun), to: UzuPattern.Pattern.Conditional
 
   # Effects
+  defdelegate set_param(pattern, key, value), to: UzuPattern.Pattern.Effects
   defdelegate gain(pattern, value), to: UzuPattern.Pattern.Effects
   defdelegate pan(pattern, value), to: UzuPattern.Pattern.Effects
   defdelegate speed(pattern, value), to: UzuPattern.Pattern.Effects
@@ -247,6 +250,14 @@ defmodule UzuPattern.Pattern do
 
   defp apply_transform(pattern, {:every, n, fun}, cycle) do
     if rem(cycle, n) == 0 do
+      fun.(pattern)
+    else
+      pattern
+    end
+  end
+
+  defp apply_transform(pattern, {:every_offset, n, offset, fun}, cycle) do
+    if rem(cycle, n) == offset do
       fun.(pattern)
     else
       pattern

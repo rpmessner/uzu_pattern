@@ -21,12 +21,28 @@ defmodule UzuPattern.Pattern.Rhythm do
   alias UzuPattern.Pattern
 
   @doc """
-  Generate a Euclidean rhythm pattern.
+  Create a Euclidean rhythm - evenly distributing pulses across steps.
 
-  Distributes N pulses across M steps using Bjorklund's algorithm.
-  Only events at positions where pulses occur are kept.
+  Euclidean rhythms are found in music worldwide, from African
+  polyrhythms to Cuban clave patterns. They create naturally
+  "groovy" patterns by spacing beats as evenly as possible.
+
+  Common patterns:
+  - `euclid(3, 8)` - Cuban tresillo / breakbeat feel
+  - `euclid(5, 8)` - Cinquillo rhythm
+  - `euclid(7, 12)` - West African bell pattern
+  - `euclid(3, 4)` - Simple syncopation
 
   ## Examples
+
+      # Classic 3-over-8 kick pattern
+      s("bd") |> euclid(3, 8)
+
+      # Combine with hi-hats for full beat
+      s("bd") |> euclid(3, 8) |> stack(s("hh*8"))
+
+      # Euclidean melody
+      note("c4 e4 g4 c5") |> euclid(3, 4)
 
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Rhythm.euclid(3, 8)
       iex> events = Pattern.events(pattern)
@@ -51,11 +67,19 @@ defmodule UzuPattern.Pattern.Rhythm do
   end
 
   @doc """
-  Generate a Euclidean rhythm with rotation offset.
+  Create a Euclidean rhythm with rotation offset.
 
-  Like euclid/3 but rotates the pattern by offset steps.
+  Same as `euclid/3` but shifts the starting point by `offset` steps.
+  This changes where the accents fall without changing the underlying
+  rhythm structure.
 
   ## Examples
+
+      # Shift the downbeat off the one
+      s("bd") |> euclid_rot(3, 8, 1)
+
+      # Try different rotations for variety
+      s("sd") |> euclid_rot(5, 8, 2)
 
       iex> pattern = Pattern.new("bd sd hh cp") |> Pattern.Rhythm.euclid_rot(3, 8, 2)
       iex> events = Pattern.events(pattern)
@@ -82,12 +106,24 @@ defmodule UzuPattern.Pattern.Rhythm do
   end
 
   @doc """
-  Add swing timing to pattern.
+  Add swing feel by delaying off-beat notes.
 
-  Delays every other event by 1/3 of the slice duration, creating shuffle feel.
-  Convenience function that calls swing_by with delay of 1/3.
+  Swing pushes the upbeats later, creating that "shuffle" or "groove"
+  feel found in jazz, hip-hop, and house music.
+
+  The number `n` sets how the cycle is divided for swing timing
+  (typically 2, 4, or 8 depending on your pattern).
 
   ## Examples
+
+      # Swung hi-hats (classic house feel)
+      s("hh*8") |> swing(4)
+
+      # Swung snare pattern
+      s("bd ~ sd ~") |> swing(2)
+
+      # Jazz-style swing on melody
+      note("c4 d4 e4 g4") |> s("piano") |> swing(4)
 
       iex> pattern = Pattern.new("hh*8") |> Pattern.Rhythm.swing(4)
       iex> events = Pattern.events(pattern)
@@ -99,12 +135,24 @@ defmodule UzuPattern.Pattern.Rhythm do
   end
 
   @doc """
-  Add parameterized swing timing to pattern.
+  Add swing with adjustable amount.
 
-  Breaks cycle into N slices, delays events in second half of each slice.
-  Amount is relative to half-slice size (0.0 = no swing, 0.5 = half delay).
+  - `amount` controls how much swing (0.0 = straight, 0.5 = heavy swing)
+  - `n` sets the subdivision for swing timing
+
+  Use for fine-tuning groove - different amounts work for different genres.
+  Light swing (0.1-0.2) for subtle feel, heavy (0.4+) for obvious shuffle.
 
   ## Examples
+
+      # Light swing for modern electronic
+      s("hh*8") |> swing_by(0.15, 4)
+
+      # Heavy shuffle feel
+      s("bd ~ sd ~") |> swing_by(0.4, 2)
+
+      # MPC-style boom bap
+      s("bd ~ sd ~") |> swing_by(0.33, 4)
 
       iex> pattern = Pattern.new("hh*8") |> Pattern.Rhythm.swing_by(0.5, 4)
       iex> events = Pattern.events(pattern)
