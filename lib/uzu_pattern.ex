@@ -9,20 +9,23 @@ defmodule UzuPattern do
   ## Architecture
 
   ```
-  UzuParser (parsing) → UzuPattern (transformation) → Waveform (audio)
+  UzuParser (parsing) → UzuPattern.Interpreter → UzuPattern.Pattern → Waveform (audio)
   ```
 
-  - **UzuParser** parses mini-notation strings into `[%Event{}]`
-  - **UzuPattern** transforms patterns with `fast`, `slow`, `rev`, etc.
-  - **Waveform** schedules and plays the events via SuperDirt/MIDI
+  - **UzuParser** parses mini-notation strings into AST
+  - **UzuPattern.Interpreter** converts AST into composable Patterns
+  - **UzuPattern.Pattern** provides query-based pattern composition
+  - **Waveform** schedules and plays the events via Web Audio / SuperCollider
 
   ## Quick Start
 
   ```elixir
-  alias UzuPattern.Pattern
+  alias UzuPattern.{Pattern, Interpreter}
 
-  # Create a pattern from mini-notation
-  pattern = Pattern.new("bd sd hh cp")
+  # Parse and interpret mini-notation
+  pattern = "bd sd hh cp"
+            |> UzuParser.Grammar.parse()
+            |> Interpreter.interpret()
 
   # Apply transformations
   pattern
@@ -33,12 +36,12 @@ defmodule UzuPattern do
 
   ## Pattern Struct
 
-  The `%Pattern{}` struct wraps events and transformations:
+  The `%Pattern{}` struct wraps a query function:
 
   ```elixir
   %Pattern{
-    events: [%Event{}, ...],     # Base events
-    transforms: [...]            # Pending cycle-aware transforms
+    query: fn cycle -> [%Event{}, ...] end,
+    metadata: %{}
   }
   ```
 
@@ -62,63 +65,57 @@ defmodule UzuPattern do
   - `rev/1` - Reverse pattern
   - `early/2` - Shift earlier
   - `late/2` - Shift later
+  - `ply/2` - Repeat each event N times
+  - `compress/3` - Squeeze pattern into time window
+  - `zoom/3` - Extract and expand time window
+  - `linger/2` - Loop first portion of pattern
 
   ### Combinators
   - `stack/1` - Play patterns simultaneously
-  - `cat/1` - Play patterns sequentially
+  - `fastcat/1` - Sequence patterns within cycle
+  - `slowcat/1` - Alternate patterns across cycles
   - `palindrome/1` - Forward then backward
+  - `superimpose/2` - Layer with transformed copy
+  - `echo/4` - Create fading echoes
 
   ### Conditional (Cycle-Aware)
   - `every/3` - Apply function every N cycles
   - `sometimes/2` - Apply with 50% probability
+  - `iter/2` - Rotate pattern each cycle
   - `degrade/1` - Randomly remove events
 
   ### Stereo
   - `jux/2` - Apply function to right channel only
 
+  ### Rhythm
+  - `euclid/3` - Euclidean rhythm distribution
+  - `swing/2` - Add swing timing
+
   See `UzuPattern.Pattern` for full documentation.
   """
 
-  alias UzuPattern.Pattern
+  alias UzuPattern.{Pattern, Interpreter}
 
   @doc """
-  Create a new pattern from a mini-notation string.
-
-  Convenience function that delegates to `Pattern.new/1`.
+  Parse and interpret a mini-notation string into a Pattern.
 
   ## Examples
 
-      iex> pattern = UzuPattern.new("bd sd hh cp")
-      iex> length(pattern.events)
+      iex> pattern = UzuPattern.parse("bd sd hh cp")
+      iex> events = UzuPattern.Pattern.query(pattern, 0)
+      iex> length(events)
       4
   """
-  defdelegate new(source), to: Pattern
+  def parse(source) when is_binary(source) do
+    source
+    |> UzuParser.Grammar.parse()
+    |> Interpreter.interpret()
+  end
 
   @doc """
   Query a pattern for events at a specific cycle.
 
   Convenience function that delegates to `Pattern.query/2`.
-
-  ## Examples
-
-      iex> pattern = UzuPattern.new("bd sd")
-      iex> events = UzuPattern.query(pattern, 0)
-      iex> length(events)
-      2
   """
   defdelegate query(pattern, cycle), to: Pattern
-
-  @doc """
-  Extract events from a pattern.
-
-  Convenience function that delegates to `Pattern.events/1`.
-
-  ## Examples
-
-      iex> pattern = UzuPattern.new("bd sd")
-      iex> events = UzuPattern.events(pattern)
-      iex> length(events)
-      2
-  """
-  defdelegate events(pattern), to: Pattern
 end

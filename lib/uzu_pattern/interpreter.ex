@@ -1,29 +1,28 @@
-defmodule UzuPattern.QueryInterpreter do
+defmodule UzuPattern.Interpreter do
   @moduledoc """
-  Interprets parsed AST into QueryPattern compositions.
+  Interprets parsed AST into Pattern compositions.
 
-  Unlike the original Interpreter which produces flat event lists,
-  this interpreter produces composable QueryPattern structures that
+  The interpreter walks the AST and builds Pattern compositions that
   properly handle nested patterns like `<[a b]*2 [c d]*2>`.
 
   ## Architecture
 
-  The interpreter walks the AST and builds QueryPattern compositions:
-  - Sequences `[a b c]` → `QueryPattern.fastcat([...])`
-  - Alternation `<a b c>` → `QueryPattern.slowcat([...])`
-  - Polyphony `[a, b, c]` → `QueryPattern.stack([...])`
-  - Repetition `a*4` → `QueryPattern.fast(pattern, 4)`
-  - Atoms `bd:1` → `QueryPattern.pure("bd", sample: 1)`
+  The interpreter walks the AST and builds Pattern compositions:
+  - Sequences `[a b c]` → `Pattern.fastcat([...])`
+  - Alternation `<a b c>` → `Pattern.slowcat([...])`
+  - Polyphony `[a, b, c]` → `Pattern.stack([...])`
+  - Repetition `a*4` → `Pattern.fast(pattern, 4)`
+  - Atoms `bd:1` → `Pattern.pure("bd", sample: 1)`
   """
 
-  alias UzuPattern.QueryPattern
-  alias UzuParser.Euclidean
+  alias UzuPattern.Pattern
+  alias UzuPattern.Euclidean
 
   @doc """
-  Interpret an AST into a QueryPattern.
+  Interpret an AST into a Pattern.
 
   Takes the AST from UzuParser.Grammar.parse/1 and converts it to a
-  composable QueryPattern that can be queried for any cycle.
+  composable Pattern that can be queried for any cycle.
   """
   def interpret({:ok, ast}) do
     interpret_node(ast)
@@ -45,7 +44,7 @@ defmodule UzuPattern.QueryInterpreter do
   # Stack (polyphony)
   defp interpret_node({:stack, sequences}) do
     patterns = Enum.map(sequences, &interpret_sequence/1)
-    QueryPattern.stack(patterns)
+    Pattern.stack(patterns)
   end
 
   # Subdivision with children
@@ -56,10 +55,10 @@ defmodule UzuPattern.QueryInterpreter do
     # Apply modifiers
     case node do
       %{repeat: n} when is_integer(n) and n > 1 ->
-        QueryPattern.fast(base_pattern, n)
+        Pattern.fast(base_pattern, n)
 
       %{division: div} when is_number(div) ->
-        QueryPattern.slow(base_pattern, div)
+        Pattern.slow(base_pattern, div)
 
       _ ->
         base_pattern
@@ -70,7 +69,7 @@ defmodule UzuPattern.QueryInterpreter do
   defp interpret_node(%{type: :alternation, children: children}) do
     items = extract_sequence_items(children)
     patterns = Enum.map(items, &interpret_item/1)
-    QueryPattern.slowcat(patterns)
+    Pattern.slowcat(patterns)
   end
 
   # Polymetric
@@ -92,11 +91,11 @@ defmodule UzuPattern.QueryInterpreter do
     patterns = Enum.map(children, &interpret_atom/1)
 
     # Random choice selects one pattern per cycle (using cycle as seed)
-    QueryPattern.new(fn cycle ->
+    Pattern.new(fn cycle ->
       :rand.seed(:exsss, {cycle, cycle * 7, cycle * 13})
       index = :rand.uniform(length(patterns)) - 1
       pattern = Enum.at(patterns, index)
-      QueryPattern.query(pattern, cycle)
+      Pattern.query(pattern, cycle)
     end)
   end
 
@@ -107,17 +106,17 @@ defmodule UzuPattern.QueryInterpreter do
 
   # Rest
   defp interpret_node(%{type: :rest}) do
-    QueryPattern.silence()
+    Pattern.silence()
   end
 
   # Elongation (handled in sequence processing)
   defp interpret_node(%{type: :elongation}) do
-    QueryPattern.silence()
+    Pattern.silence()
   end
 
   # Fallback
   defp interpret_node(_) do
-    QueryPattern.silence()
+    Pattern.silence()
   end
 
   # ============================================================================
@@ -135,7 +134,7 @@ defmodule UzuPattern.QueryInterpreter do
       |> Enum.sum()
 
     if total_weight == 0 do
-      QueryPattern.silence()
+      Pattern.silence()
     else
       # Convert to patterns with their weight fractions
       weighted_patterns =
@@ -148,13 +147,13 @@ defmodule UzuPattern.QueryInterpreter do
         end)
 
       # Build a custom query that handles weighted timing
-      QueryPattern.new(fn cycle ->
+      Pattern.new(fn cycle ->
         {events, _} =
           Enum.reduce(weighted_patterns, {[], 0.0}, fn {pattern, fraction}, {acc, offset} ->
             # Query the pattern and rescale its events to this slot
             pattern_events =
               pattern
-              |> QueryPattern.query(cycle)
+              |> Pattern.query(cycle)
               |> Enum.map(fn event ->
                 %{event | time: offset + event.time * fraction, duration: event.duration * fraction}
               end)
@@ -200,7 +199,7 @@ defmodule UzuPattern.QueryInterpreter do
   # Item Interpretation
   # ============================================================================
 
-  defp interpret_item(%{type: :rest}), do: QueryPattern.silence()
+  defp interpret_item(%{type: :rest}), do: Pattern.silence()
 
   defp interpret_item(%{type: :atom} = atom) do
     base_pattern = interpret_atom(atom)
@@ -234,10 +233,10 @@ defmodule UzuPattern.QueryInterpreter do
 
   defp interpret_item({:stack, seqs}) do
     patterns = Enum.map(seqs, &interpret_sequence/1)
-    QueryPattern.stack(patterns)
+    Pattern.stack(patterns)
   end
 
-  defp interpret_item(_), do: QueryPattern.silence()
+  defp interpret_item(_), do: Pattern.silence()
 
   # ============================================================================
   # Atom Interpretation
@@ -260,7 +259,7 @@ defmodule UzuPattern.QueryInterpreter do
         div -> Map.put(params, :division, div)
       end
 
-    QueryPattern.pure(
+    Pattern.pure(
       atom.value,
       sample: atom[:sample],
       params: params,
@@ -269,20 +268,20 @@ defmodule UzuPattern.QueryInterpreter do
     )
   end
 
-  defp interpret_atom(_), do: QueryPattern.silence()
+  defp interpret_atom(_), do: Pattern.silence()
 
   # ============================================================================
   # Modifier Application
   # ============================================================================
 
   defp maybe_apply_repeat(pattern, %{repeat: n}) when is_integer(n) and n > 1 do
-    QueryPattern.fast(pattern, n)
+    Pattern.fast(pattern, n)
   end
 
   defp maybe_apply_repeat(pattern, _), do: pattern
 
   defp maybe_apply_replicate(pattern, %{replicate: n}) when is_integer(n) and n > 1 do
-    QueryPattern.fast(pattern, n)
+    Pattern.fast(pattern, n)
   end
 
   defp maybe_apply_replicate(pattern, _), do: pattern
@@ -298,8 +297,8 @@ defmodule UzuPattern.QueryInterpreter do
     rhythm = Euclidean.rhythm(k, n, offset)
 
     # Create a pattern that plays only on hits
-    QueryPattern.new(fn cycle ->
-      base_events = QueryPattern.query(pattern, cycle)
+    Pattern.new(fn cycle ->
+      base_events = Pattern.query(pattern, cycle)
 
       rhythm
       |> Enum.with_index()
@@ -326,7 +325,7 @@ defmodule UzuPattern.QueryInterpreter do
 
   defp interpret_polymetric(groups) do
     patterns = Enum.map(groups, &interpret_group/1)
-    QueryPattern.stack(patterns)
+    Pattern.stack(patterns)
   end
 
   defp interpret_polymetric_stepped(groups, steps) do
@@ -337,7 +336,7 @@ defmodule UzuPattern.QueryInterpreter do
         items = extract_sequence_items(group)
         token_count = length(items)
 
-        QueryPattern.new(fn cycle ->
+        Pattern.new(fn cycle ->
           items
           |> Enum.with_index()
           |> Enum.flat_map(fn {item, idx} ->
@@ -345,7 +344,7 @@ defmodule UzuPattern.QueryInterpreter do
             pattern = interpret_item(item)
 
             pattern
-            |> QueryPattern.query(cycle)
+            |> Pattern.query(cycle)
             |> Enum.map(fn event ->
               %{event | time: time_offset, duration: step_duration}
             end)
@@ -353,13 +352,13 @@ defmodule UzuPattern.QueryInterpreter do
         end)
       end)
 
-    QueryPattern.stack(patterns)
+    Pattern.stack(patterns)
   end
 
   defp interpret_group({:sequence, items}), do: interpret_sequence(items)
   defp interpret_group(sequence: items), do: interpret_sequence(items)
   defp interpret_group(items) when is_list(items), do: interpret_sequence(items)
-  defp interpret_group(_), do: QueryPattern.silence()
+  defp interpret_group(_), do: Pattern.silence()
 
   # ============================================================================
   # Helpers

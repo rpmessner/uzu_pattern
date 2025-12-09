@@ -43,7 +43,7 @@ defmodule UzuPattern.MixProject do
 
   defp deps do
     [
-      {:uzu_parser, "~> 0.5.0"},
+      {:uzu_parser, path: "../uzu_parser"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
