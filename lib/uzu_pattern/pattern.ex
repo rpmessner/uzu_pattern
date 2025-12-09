@@ -53,13 +53,34 @@ defmodule UzuPattern.Pattern do
   # ============================================================================
 
   @doc """
-  Create a pattern from a query function.
+  Create a pattern from a query function or mini-notation string.
+
+  ## With query function
 
   The query function takes a cycle number and returns events for that cycle.
   Events should have time values in [0, 1) representing position within the cycle.
+
+  ## With mini-notation string
+
+  Parses the string and interprets it into a Pattern.
+
+  ## Examples
+
+      # From query function
+      iex> pattern = Pattern.new(fn _cycle -> [%Event{sound: "bd", time: 0.0, duration: 1.0}] end)
+
+      # From string
+      iex> pattern = Pattern.new("bd sd hh")
+      iex> events = Pattern.events(pattern)
+      iex> length(events)
+      3
   """
   def new(query_fn) when is_function(query_fn, 1) do
     %__MODULE__{query: query_fn, metadata: %{}}
+  end
+
+  def new(source) when is_binary(source) do
+    UzuPattern.parse(source)
   end
 
   @doc """
@@ -272,17 +293,21 @@ defmodule UzuPattern.Pattern do
   """
   def fast(%__MODULE__{} = pattern, factor) when factor > 0 do
     new(fn cycle ->
-      # When fast by n, we query n times per cycle
-      0..(factor - 1)
-      |> Enum.flat_map(fn i ->
-        offset = i / factor
-        step = 1.0 / factor
+      # Query at faster time, then compress events back
+      query_cycle = trunc(cycle * factor)
 
-        pattern
-        |> query(cycle * factor + i)
-        |> Enum.map(fn event ->
-          %{event | time: offset + event.time * step, duration: event.duration * step}
-        end)
+      pattern
+      |> query(query_cycle)
+      |> Enum.map(fn event ->
+        %{
+          event
+          | time: event.time / factor,
+            duration: event.duration / factor
+        }
+      end)
+      |> Enum.filter(fn event ->
+        # Only keep events that fall within the current cycle [0, 1)
+        event.time >= 0.0 and event.time < 1.0
       end)
     end)
   end
@@ -291,30 +316,10 @@ defmodule UzuPattern.Pattern do
   Slow down a pattern by factor n.
 
   `/n` in mini-notation. Makes the pattern take n cycles to complete.
+  Same as fast(1/n).
   """
   def slow(%__MODULE__{} = pattern, factor) when factor > 0 do
-    new(fn cycle ->
-      # Only produce events on cycles where this pattern is "active"
-      # For slow(2), cycle 0 and 1 both show the first half/second half of pattern
-      inner_cycle = div(cycle, factor)
-      position_in_slow = rem(cycle, factor)
-
-      # Query the inner pattern
-      events = query(pattern, inner_cycle)
-
-      # Filter to events that fall within this cycle's portion
-      start_frac = position_in_slow / factor
-      end_frac = (position_in_slow + 1) / factor
-
-      events
-      |> Enum.filter(fn event ->
-        event.time >= start_frac and event.time < end_frac
-      end)
-      |> Enum.map(fn event ->
-        # Rescale time to [0, 1) within this cycle
-        %{event | time: (event.time - start_frac) * factor, duration: event.duration * factor}
-      end)
-    end)
+    fast(pattern, 1.0 / factor)
   end
 
   @doc """
@@ -572,12 +577,13 @@ defmodule UzuPattern.Pattern do
   Apply a function to create a partial stereo effect.
 
   Amount controls pan separation (0.0 = no effect, 1.0 = full stereo).
+  Pan values range from -1.0 (left) to 1.0 (right).
   """
   def jux_by(%__MODULE__{} = pattern, amount, fun)
       when is_number(amount) and amount >= 0.0 and amount <= 1.0 and is_function(fun, 1) do
     # Pan left uses negative pan, right uses positive
-    left_pan = 0.5 - amount / 2
-    right_pan = 0.5 + amount / 2
+    left_pan = -amount
+    right_pan = amount
 
     left_pattern = pan(pattern, left_pan)
     right_pattern = pattern |> fun.() |> pan(right_pan)
@@ -1012,16 +1018,19 @@ defmodule UzuPattern.Pattern do
     new(fn cycle ->
       base_events = query(pattern, cycle)
 
-      rhythm
+      # Get indices where rhythm has pulses (1s)
+      pulse_indices =
+        rhythm
+        |> Enum.with_index()
+        |> Enum.filter(fn {hit, _idx} -> hit == 1 end)
+        |> Enum.map(fn {_hit, idx} -> idx end)
+
+      # Keep only events at pulse positions, update their time based on rhythm position
+      base_events
       |> Enum.with_index()
-      |> Enum.flat_map(fn {hit, idx} ->
-        if hit == 1 do
-          Enum.map(base_events, fn event ->
-            %{event | time: idx * step_size, duration: step_size}
-          end)
-        else
-          []
-        end
+      |> Enum.filter(fn {_event, idx} -> idx in pulse_indices end)
+      |> Enum.map(fn {event, idx} ->
+        %{event | time: idx * step_size, duration: step_size}
       end)
       |> Enum.sort_by(& &1.time)
     end)
@@ -1042,16 +1051,19 @@ defmodule UzuPattern.Pattern do
     new(fn cycle ->
       base_events = query(pattern, cycle)
 
-      rotated
+      # Get indices where rotated rhythm has pulses (1s)
+      pulse_indices =
+        rotated
+        |> Enum.with_index()
+        |> Enum.filter(fn {hit, _idx} -> hit == 1 end)
+        |> Enum.map(fn {_hit, idx} -> idx end)
+
+      # Keep only events at pulse positions, update their time based on rhythm position
+      base_events
       |> Enum.with_index()
-      |> Enum.flat_map(fn {hit, idx} ->
-        if hit == 1 do
-          Enum.map(base_events, fn event ->
-            %{event | time: idx * step_size, duration: step_size}
-          end)
-        else
-          []
-        end
+      |> Enum.filter(fn {_event, idx} -> idx in pulse_indices end)
+      |> Enum.map(fn {event, idx} ->
+        %{event | time: idx * step_size, duration: step_size}
       end)
       |> Enum.sort_by(& &1.time)
     end)
