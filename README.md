@@ -164,7 +164,7 @@ UzuPattern.parse("arpy:0 arpy:1 arpy:2 arpy:3")
 ## Related Projects
 
 - [UzuParser](https://github.com/rpmessner/uzu_parser) - Mini-notation parser
-- [Undertow](https://github.com/rpmessner/undertow_standalone) - Live coding environment
+- [Waveform](https://github.com/rpmessner/waveform) - Audio playback via SuperCollider/MIDI
 
 ## License
 
