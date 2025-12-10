@@ -163,11 +163,17 @@ defmodule UzuPattern.Integration.ParseTest do
       assert_in_delta Enum.at(events, 0).duration, 0.75, 0.01
     end
 
-    test "division /2 stores in params" do
-      events = parse_events("[bd sd]/2")
+    test "division /2 slows pattern across cycles" do
+      pattern = UzuPattern.parse("[bd sd]/2")
 
-      assert length(events) == 2
-      assert Enum.all?(events, &(&1.params == %{division: 2.0}))
+      # /2 means slow(2): pattern spans 2 cycles
+      events_0 = UzuPattern.Pattern.query(pattern, 0)
+      assert length(events_0) == 1
+      assert hd(events_0).sound == "bd"
+
+      events_1 = UzuPattern.Pattern.query(pattern, 1)
+      assert length(events_1) == 1
+      assert hd(events_1).sound == "sd"
     end
 
     test "sound parameters |gain:0.8|speed:2" do
@@ -179,19 +185,29 @@ defmodule UzuPattern.Integration.ParseTest do
   end
 
   describe "alternation and random choice" do
-    test "random choice bd|sd stores options" do
-      events = parse_events("bd|sd hh")
+    test "random choice bd|sd selects randomly per cycle" do
+      pattern = UzuPattern.parse("bd|sd hh")
 
-      assert length(events) == 2
-      assert Map.has_key?(Enum.at(events, 0).params, :random_choice)
-      assert Enum.at(events, 1).params == %{}
+      # Random choice selects one of the options per cycle
+      # The second element (hh) should always be present
+      events_0 = UzuPattern.Pattern.query(pattern, 0)
+      assert length(events_0) == 2
+      assert Enum.at(events_0, 0).sound in ["bd", "sd"]
+      assert Enum.at(events_0, 1).sound == "hh"
     end
 
-    test "alternation <bd sd> stores options" do
-      events = parse_events("<bd sd> hh cp")
+    test "alternation <bd sd> cycles through options" do
+      pattern = UzuPattern.parse("<bd sd> hh cp")
 
-      assert length(events) == 3
-      assert Map.has_key?(Enum.at(events, 0).params, :alternate)
+      # Cycle 0: bd hh cp
+      events_0 = UzuPattern.Pattern.query(pattern, 0)
+      assert length(events_0) == 3
+      assert Enum.at(events_0, 0).sound == "bd"
+
+      # Cycle 1: sd hh cp
+      events_1 = UzuPattern.Pattern.query(pattern, 1)
+      assert length(events_1) == 3
+      assert Enum.at(events_1, 0).sound == "sd"
     end
   end
 
@@ -325,9 +341,12 @@ defmodule UzuPattern.Integration.ParseTest do
     end
 
     test "division operator preserves inner positions" do
-      pattern = "[sd sd]/2"
-      events = parse_events(pattern)
-      [sd1, sd2] = events
+      p = UzuPattern.parse("[sd sd]/2")
+
+      # "[sd sd]/2" with /2 spreads events across 2 cycles
+      # Cycle 0 gets first sd, cycle 1 gets second sd
+      [sd1] = UzuPattern.Pattern.query(p, 0)
+      [sd2] = UzuPattern.Pattern.query(p, 1)
 
       # "[sd sd]/2"
       #  012345678

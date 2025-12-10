@@ -12,6 +12,8 @@ defmodule UzuPattern.Event do
     * `:time` - The time offset within the cycle (0.0 to 1.0)
     * `:duration` - How long the event lasts (0.0 to 1.0, default 1.0)
     * `:params` - Additional parameters (volume, pan, speed, etc.)
+    * `:value` - Numeric value for signal patterns (e.g., sine wave output)
+    * `:continuous` - True for signal events (no discrete onset)
 
   ## Harmony Token Support
 
@@ -42,7 +44,9 @@ defmodule UzuPattern.Event do
           duration: float(),
           params: map(),
           source_start: non_neg_integer() | nil,
-          source_end: non_neg_integer() | nil
+          source_end: non_neg_integer() | nil,
+          value: number() | nil,
+          continuous: boolean()
         }
 
   defstruct sound: "",
@@ -51,7 +55,9 @@ defmodule UzuPattern.Event do
             duration: 1.0,
             params: %{},
             source_start: nil,
-            source_end: nil
+            source_end: nil,
+            value: nil,
+            continuous: false
 
   @doc """
   Creates a new event with the given sound at the specified time.
