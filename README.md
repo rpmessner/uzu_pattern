@@ -1,17 +1,15 @@
 # UzuPattern
 
-Pattern orchestration library for Strudel.js-style transformations in Elixir.
+Pattern library for TidalCycles/Strudel-style live coding in Elixir.
 
-UzuPattern provides pattern manipulation functions (`fast`, `slow`, `rev`, `stack`, `cat`, `every`, `jux`, etc.) that work with events from [UzuParser](https://github.com/rpmessner/uzu_parser). It enables TidalCycles/Strudel.js-style live coding patterns with method chaining and cycle-aware transformations.
+UzuPattern provides a query-based pattern system with transformations (`fast`, `slow`, `rev`, `every`, `jux`, etc.), signal patterns for modulation, and effect parameters. It integrates mini-notation parsing from [UzuParser](https://github.com/rpmessner/uzu_parser).
 
 ## Installation
-
-Add `uzu_pattern` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:uzu_pattern, "~> 0.1.0"}
+    {:uzu_pattern, "~> 0.7.0"}
   ]
 end
 ```
@@ -19,193 +17,154 @@ end
 ## Quick Start
 
 ```elixir
-alias UzuPattern.Pattern
-
-# Create a pattern from mini-notation
-pattern = Pattern.new("bd sd hh cp")
+# Parse mini-notation into a pattern
+pattern = UzuPattern.parse("bd sd hh cp")
 
 # Apply transformations
 pattern
-|> Pattern.fast(2)                      # Double speed
-|> Pattern.rev()                        # Reverse
-|> Pattern.every(4, &Pattern.slow(&1, 2)) # Slow every 4th cycle
+|> Pattern.fast(2)
+|> Pattern.rev()
+|> Pattern.every(4, &Pattern.slow(&1, 2))
 
-# Get events for a specific cycle
+# Query events for a specific cycle
 events = Pattern.query(pattern, 0)
 ```
 
-## Architecture
+## Core Concept: Query Functions
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   UzuParser     │────▶│   UzuPattern    │────▶│    Waveform     │
-│   (parsing)     │     │  (transforms)   │     │    (audio)      │
-│                 │     │                 │     │                 │
-│ • parse/1       │     │ • Pattern struct│     │ • OSC           │
-│ • mini-notation │     │ • fast/slow/rev │     │ • SuperDirt     │
-│ • [%Event{}]    │     │ • stack/cat     │     │ • MIDI          │
-│                 │     │ • every/when    │     │ • scheduling    │
-│                 │     │ • query/2       │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-## Features
-
-### Time Modifiers
+Patterns are query functions, not static event lists. This enables cycle-aware transformations:
 
 ```elixir
-Pattern.fast(pattern, 2)         # Speed up by factor
-Pattern.slow(pattern, 2)         # Slow down by factor
-Pattern.rev(pattern)             # Reverse pattern
-Pattern.early(pattern, 0.25)     # Shift earlier (wraps)
-Pattern.late(pattern, 0.25)      # Shift later (wraps)
-Pattern.ply(pattern, 3)          # Repeat each event 3 times
-Pattern.compress(pattern, 0.25, 0.75)  # Fit into time segment
-Pattern.zoom(pattern, 0.25, 0.75)      # Extract and expand segment
-Pattern.linger(pattern, 0.5)     # Repeat first half to fill cycle
-```
+pattern = UzuPattern.parse("bd sd") |> Pattern.every(2, &Pattern.rev/1)
 
-### Combinators
-
-```elixir
-Pattern.stack([p1, p2, p3])  # Play simultaneously
-Pattern.cat([p1, p2, p3])    # Play sequentially
-Pattern.palindrome(pattern)  # Forward then backward
-```
-
-### Conditional (Cycle-Aware)
-
-```elixir
-Pattern.every(pattern, 4, &Pattern.rev/1)    # Reverse every 4th cycle
-Pattern.sometimes(pattern, &Pattern.fast(&1, 2)) # 50% chance each cycle
-Pattern.often(pattern, fun)       # 75% probability
-Pattern.rarely(pattern, fun)      # 25% probability
-Pattern.iter(pattern, 4)          # Rotate start position each cycle
-Pattern.iter_back(pattern, 4)     # Rotate backwards each cycle
-```
-
-### Degradation
-
-```elixir
-Pattern.degrade(pattern)         # Remove ~50% of events
-Pattern.degrade_by(pattern, 0.3) # Remove ~30% of events
-```
-
-### Stereo
-
-```elixir
-Pattern.jux(pattern, &Pattern.rev/1) # Left: original, Right: reversed
-```
-
-## Cycle-Aware Transformations
-
-Some transformations (like `every`) depend on which cycle is being played. UzuPattern handles this through the `query/2` function:
-
-```elixir
-pattern = Pattern.new("bd sd") |> Pattern.every(2, &Pattern.rev/1)
-
-Pattern.query(pattern, 0)  # Cycle 0: reversed (0 mod 2 == 0)
+Pattern.query(pattern, 0)  # Cycle 0: reversed
 Pattern.query(pattern, 1)  # Cycle 1: normal
 Pattern.query(pattern, 2)  # Cycle 2: reversed
-Pattern.query(pattern, 3)  # Cycle 3: normal
 ```
 
-## Integration with Waveform
+## Submodules
 
-UzuPattern provides a query function that Waveform can use for scheduling:
+Functions are organized into logical groups:
+
+- **Pattern.Time** - `fast`, `slow`, `early`, `late`, `ply`, `compress`, `zoom`, `linger`
+- **Pattern.Structure** - `rev`, `palindrome`, `mask`, `degrade`, `jux`, `superimpose`, `off`, `echo`, `striate`, `chop`
+- **Pattern.Conditional** - `every`, `sometimes`, `often`, `rarely`, `iter`, `first_of`, `last_of`, `when_fn`, `chunk`
+- **Pattern.Effects** - `gain`, `pan`, `speed`, `cut`, `room`, `delay`, `lpf`, `hpf`
+- **Pattern.Rhythm** - `euclid`, `euclid_rot`, `swing`, `swing_by`
+- **Pattern.Signal** - `sine`, `saw`, `tri`, `square`, `rand`, `range`, `segment`
+
+## Signal Patterns
+
+Signals provide continuous values for modulating parameters:
 
 ```elixir
-# Create pattern with transforms
-pattern =
-  "bd sd hh cp"
-  |> Pattern.new()
-  |> Pattern.fast(2)
-  |> Pattern.every(4, &Pattern.rev/1)
+# Modulate filter cutoff with sine wave (200-2000 Hz)
+UzuPattern.parse("bd sd hh cp")
+|> Pattern.lpf(Pattern.sine() |> Pattern.range(200, 2000))
 
-# Create query function for Waveform
-query_fn = fn cycle -> UzuPattern.query(pattern, cycle) end
+# Random gain per cycle
+UzuPattern.parse("bd sd")
+|> Pattern.gain(Pattern.rand() |> Pattern.range(0.5, 1.0))
 
-# Pass to Waveform's PatternScheduler
-Waveform.PatternScheduler.schedule_pattern(:drums, query_fn)
+# Stereo panning sweep
+UzuPattern.parse("arpy:0 arpy:1 arpy:2 arpy:3")
+|> Pattern.pan(Pattern.tri() |> Pattern.range(-1, 1))
+```
+
+Available waveforms: `sine`, `saw`, `isaw`, `tri`, `square`, `rand`, `irand`
+
+## Effects
+
+All effects accept static values or signal patterns:
+
+```elixir
+pattern
+|> Pattern.gain(0.8)           # Static gain
+|> Pattern.pan(-0.5)           # Static pan (left)
+|> Pattern.lpf(2000)           # Static filter
+|> Pattern.lpf(Pattern.sine() |> Pattern.range(200, 2000))  # Modulated filter
+```
+
+## Time Transformations
+
+```elixir
+Pattern.fast(pattern, 2)              # Double speed
+Pattern.slow(pattern, 2)              # Half speed
+Pattern.rev(pattern)                  # Reverse
+Pattern.early(pattern, 0.25)          # Shift earlier
+Pattern.late(pattern, 0.25)           # Shift later
+Pattern.ply(pattern, 3)               # Repeat each event
+Pattern.compress(pattern, 0.25, 0.75) # Fit into time window
+Pattern.zoom(pattern, 0.5, 1.0)       # Extract and expand
+Pattern.linger(pattern, 0.25)         # Loop first portion
+```
+
+## Structure
+
+```elixir
+Pattern.stack([p1, p2, p3])     # Layer patterns
+Pattern.cat([p1, p2, p3])       # Sequence patterns
+Pattern.palindrome(pattern)     # Forward then backward
+Pattern.jux(pattern, &Pattern.rev/1)  # Stereo split
+Pattern.superimpose(pattern, &Pattern.fast(&1, 2))  # Layer with transform
+Pattern.off(pattern, 0.125, &Pattern.fast(&1, 2))   # Offset copy
+```
+
+## Conditional
+
+```elixir
+Pattern.every(pattern, 4, &Pattern.rev/1)     # Every 4th cycle
+Pattern.sometimes(pattern, &Pattern.fast(&1, 2))  # 50% probability
+Pattern.often(pattern, fun)                   # 75% probability
+Pattern.rarely(pattern, fun)                  # 25% probability
+Pattern.iter(pattern, 4)                      # Rotate each cycle
+Pattern.degrade(pattern)                      # Remove ~50% of events
+Pattern.degrade_by(pattern, 0.3)              # Remove ~30%
+```
+
+## Rhythm
+
+```elixir
+Pattern.euclid(pattern, 3, 8)           # Euclidean rhythm
+Pattern.euclid_rot(pattern, 3, 8, 2)    # With rotation
+Pattern.swing(pattern, 2)               # Swing feel
 ```
 
 ## Examples
 
-### Basic Drum Pattern
+### Layered Drum Pattern
 
 ```elixir
-"bd sd [hh hh] cp"
-|> Pattern.new()
-|> Pattern.fast(2)
-|> Pattern.query(0)
-```
-
-### Layered Patterns
-
-```elixir
-kicks = Pattern.new("bd ~ bd ~")
-snares = Pattern.new("~ sd ~ sd")
-hats = Pattern.new("[hh hh hh hh]")
+kicks = UzuPattern.parse("bd ~ bd ~")
+snares = UzuPattern.parse("~ sd ~ sd")
+hats = UzuPattern.parse("[hh hh hh hh]")
 
 Pattern.stack([kicks, snares, hats])
+|> Pattern.lpf(Pattern.sine() |> Pattern.range(800, 4000))
 ```
 
 ### Evolving Pattern
 
 ```elixir
-"bd sd hh cp"
-|> Pattern.new()
+UzuPattern.parse("bd sd hh cp")
 |> Pattern.every(4, &Pattern.rev/1)
 |> Pattern.every(8, &Pattern.fast(&1, 2))
 |> Pattern.sometimes(&Pattern.degrade/1)
+|> Pattern.gain(Pattern.saw() |> Pattern.range(0.6, 1.0))
 ```
 
-### Stereo Spread
+### Stereo Arpeggio
 
 ```elixir
-"arpy:0 arpy:1 arpy:2 arpy:3"
-|> Pattern.new()
+UzuPattern.parse("arpy:0 arpy:1 arpy:2 arpy:3")
 |> Pattern.jux(&Pattern.rev/1)
+|> Pattern.lpf(Pattern.tri() |> Pattern.range(500, 3000))
 ```
-
-### Rhythmic Variations (Phase 2)
-
-```elixir
-# Drum roll effect with ply
-"bd sd"
-|> Pattern.new()
-|> Pattern.ply(4)
-
-# Compress pattern into middle of cycle
-"bd sd hh cp"
-|> Pattern.new()
-|> Pattern.compress(0.25, 0.75)
-
-# Zoom into second half
-"bd sd hh cp"
-|> Pattern.new()
-|> Pattern.zoom(0.5, 1.0)
-
-# Rotating pattern (evolves each cycle)
-"bd sd hh cp"
-|> Pattern.new()
-|> Pattern.iter(4)
-
-# Repeat first quarter
-"bd sd hh cp"
-|> Pattern.new()
-|> Pattern.linger(0.25)
-```
-
-## Documentation
-
-- **[ROADMAP.md](ROADMAP.md)** - Feature roadmap and Strudel.js parity tracking
-- **[HANDOFF.md](HANDOFF.md)** - Architecture and integration guide
 
 ## Related Projects
 
 - [UzuParser](https://github.com/rpmessner/uzu_parser) - Mini-notation parser
-- [Waveform](https://github.com/rpmessner/waveform) - Audio playback via SuperDirt/MIDI
+- [Undertow](https://github.com/rpmessner/undertow_standalone) - Live coding environment
 
 ## License
 
