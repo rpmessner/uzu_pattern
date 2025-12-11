@@ -8,6 +8,7 @@ defmodule UzuPattern.Pattern.Rhythm do
   """
 
   alias UzuPattern.Pattern
+  alias UzuPattern.Euclidean
 
   @doc """
   Create a Euclidean rhythm - evenly distributing pulses across steps.
@@ -23,7 +24,7 @@ defmodule UzuPattern.Pattern.Rhythm do
   def euclid(%Pattern{} = pattern, pulses, steps)
       when is_integer(pulses) and is_integer(steps) and pulses >= 0 and steps > 0 and
              pulses <= steps do
-    rhythm = euclidean_rhythm(pulses, steps)
+    rhythm = Euclidean.rhythm(pulses, steps)
     step_size = 1.0 / steps
 
     Pattern.new(fn cycle ->
@@ -53,15 +54,14 @@ defmodule UzuPattern.Pattern.Rhythm do
   def euclid_rot(%Pattern{} = pattern, pulses, steps, offset)
       when is_integer(pulses) and is_integer(steps) and is_integer(offset) and
              pulses >= 0 and steps > 0 and pulses <= steps do
-    rhythm = euclidean_rhythm(pulses, steps)
-    rotated = Enum.drop(rhythm, offset) ++ Enum.take(rhythm, offset)
+    rhythm = Euclidean.rhythm(pulses, steps, offset)
     step_size = 1.0 / steps
 
     Pattern.new(fn cycle ->
       base_events = Pattern.query(pattern, cycle)
 
       pulse_indices =
-        rotated
+        rhythm
         |> Enum.with_index()
         |> Enum.filter(fn {hit, _idx} -> hit == 1 end)
         |> Enum.map(fn {_hit, idx} -> idx end)
@@ -115,40 +115,5 @@ defmodule UzuPattern.Pattern.Rhythm do
       end)
       |> Enum.sort_by(& &1.time)
     end)
-  end
-
-  # Bjorklund's algorithm for generating Euclidean rhythms
-  defp euclidean_rhythm(pulses, _steps) when pulses == 0, do: []
-  defp euclidean_rhythm(pulses, steps) when pulses == steps, do: List.duplicate(1, steps)
-
-  defp euclidean_rhythm(pulses, steps) do
-    ones = List.duplicate([1], pulses)
-    zeros = List.duplicate([0], steps - pulses)
-    bjorklund(ones, zeros) |> List.flatten()
-  end
-
-  defp bjorklund([], zeros), do: zeros
-  defp bjorklund(ones, []), do: ones
-
-  defp bjorklund(ones, zeros) when length(ones) <= length(zeros) do
-    pairs = Enum.zip(ones, zeros) |> Enum.map(fn {a, b} -> a ++ b end)
-    remaining = Enum.drop(zeros, length(ones))
-
-    if remaining == [] do
-      pairs
-    else
-      bjorklund(pairs, remaining)
-    end
-  end
-
-  defp bjorklund(ones, zeros) do
-    pairs = Enum.zip(zeros, ones) |> Enum.map(fn {a, b} -> a ++ b end)
-    remaining = Enum.drop(ones, length(zeros))
-
-    if remaining == [] do
-      pairs
-    else
-      bjorklund(remaining, pairs)
-    end
   end
 end
