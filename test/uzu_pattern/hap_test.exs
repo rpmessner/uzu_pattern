@@ -1,0 +1,221 @@
+defmodule UzuPattern.HapTest do
+  use ExUnit.Case, async: true
+
+  alias UzuPattern.Hap
+  alias UzuPattern.TimeSpan
+
+  describe "new/3" do
+    test "creates discrete hap with whole and part equal" do
+      ts = TimeSpan.new(0.0, 0.5)
+      hap = Hap.new(ts, %{s: "bd"})
+
+      assert hap.whole == ts
+      assert hap.part == ts
+      assert hap.value == %{s: "bd"}
+      assert hap.context.locations == []
+      assert hap.context.tags == []
+    end
+
+    test "accepts context" do
+      ts = TimeSpan.new(0.0, 1.0)
+      hap = Hap.new(ts, %{s: "sd"}, %{tags: ["drums"]})
+
+      assert hap.context.tags == ["drums"]
+    end
+  end
+
+  describe "continuous/3" do
+    test "creates continuous hap with nil whole" do
+      part = TimeSpan.new(0.0, 1.0)
+      hap = Hap.continuous(part, %{freq: 440.0})
+
+      assert hap.whole == nil
+      assert hap.part == part
+      assert hap.value == %{freq: 440.0}
+    end
+  end
+
+  describe "discrete?/1 and continuous?/1" do
+    test "discrete hap has whole" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      assert Hap.discrete?(hap)
+      refute Hap.continuous?(hap)
+    end
+
+    test "continuous hap has nil whole" do
+      hap = Hap.continuous(TimeSpan.new(0.0, 1.0), %{freq: 440.0})
+      refute Hap.discrete?(hap)
+      assert Hap.continuous?(hap)
+    end
+  end
+
+  describe "onset/1" do
+    test "returns whole.begin for discrete haps" do
+      hap = Hap.new(TimeSpan.new(0.5, 1.0), %{s: "bd"})
+      assert Hap.onset(hap) == 0.5
+    end
+
+    test "returns nil for continuous haps" do
+      hap = Hap.continuous(TimeSpan.new(0.5, 1.0), %{freq: 440.0})
+      assert Hap.onset(hap) == nil
+    end
+  end
+
+  describe "duration/1" do
+    test "returns duration of whole for discrete haps" do
+      hap = Hap.new(TimeSpan.new(0.0, 0.5), %{s: "bd"})
+      assert Hap.duration(hap) == 0.5
+    end
+
+    test "returns nil for continuous haps" do
+      hap = Hap.continuous(TimeSpan.new(0.0, 0.5), %{freq: 440.0})
+      assert Hap.duration(hap) == nil
+    end
+  end
+
+  describe "get/3 and put/3" do
+    test "get retrieves value from value map" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd", gain: 0.8})
+      assert Hap.get(hap, :s) == "bd"
+      assert Hap.get(hap, :gain) == 0.8
+      assert Hap.get(hap, :missing) == nil
+      assert Hap.get(hap, :missing, "default") == "default"
+    end
+
+    test "put adds value to value map" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      hap = Hap.put(hap, :gain, 0.5)
+      assert Hap.get(hap, :gain) == 0.5
+    end
+  end
+
+  describe "merge/2" do
+    test "merges values into value map" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      hap = Hap.merge(hap, %{gain: 0.8, pan: 0.5})
+      assert hap.value == %{s: "bd", gain: 0.8, pan: 0.5}
+    end
+  end
+
+  describe "with_location/2" do
+    test "adds location to context" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      hap = Hap.with_location(hap, %{source_start: 0, source_end: 5})
+
+      assert hap.context.locations == [%{source_start: 0, source_end: 5}]
+    end
+
+    test "accumulates multiple locations" do
+      hap =
+        Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+        |> Hap.with_location(%{source_start: 0, source_end: 5})
+        |> Hap.with_location(%{source_start: 10, source_end: 15})
+
+      assert length(hap.context.locations) == 2
+    end
+  end
+
+  describe "with_tag/2 and has_tag?/2" do
+    test "adds tag to context" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      hap = Hap.with_tag(hap, "drums")
+
+      assert Hap.has_tag?(hap, "drums")
+      refute Hap.has_tag?(hap, "melody")
+    end
+
+    test "accepts atom tags" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      hap = Hap.with_tag(hap, :drums)
+
+      assert Hap.has_tag?(hap, :drums)
+      assert Hap.has_tag?(hap, "drums")
+    end
+  end
+
+  describe "with_part/2" do
+    test "updates part for continuous hap" do
+      hap = Hap.continuous(TimeSpan.new(0.0, 1.0), %{freq: 440.0})
+      new_part = TimeSpan.new(0.5, 0.8)
+      hap = Hap.with_part(hap, new_part)
+
+      assert hap.part == new_part
+    end
+
+    test "clips part to whole for discrete hap" do
+      # Hap spans [0.2, 0.8)
+      hap = Hap.new(TimeSpan.new(0.2, 0.8), %{s: "bd"})
+      # Try to set part to [0.0, 0.5) - should clip to [0.2, 0.5)
+      hap = Hap.with_part(hap, TimeSpan.new(0.0, 0.5))
+
+      assert hap.part == %{begin: 0.2, end: 0.5}
+      # Whole unchanged
+      assert hap.whole == %{begin: 0.2, end: 0.8}
+    end
+
+    test "returns nil if new part doesn't intersect whole" do
+      hap = Hap.new(TimeSpan.new(0.0, 0.5), %{s: "bd"})
+      result = Hap.with_part(hap, TimeSpan.new(0.6, 1.0))
+
+      assert result == nil
+    end
+  end
+
+  describe "shift/2" do
+    test "shifts both whole and part for discrete hap" do
+      hap = Hap.new(TimeSpan.new(0.0, 0.5), %{s: "bd"})
+      hap = Hap.shift(hap, 1.0)
+
+      assert hap.whole == %{begin: 1.0, end: 1.5}
+      assert hap.part == %{begin: 1.0, end: 1.5}
+    end
+
+    test "shifts only part for continuous hap" do
+      hap = Hap.continuous(TimeSpan.new(0.0, 0.5), %{freq: 440.0})
+      hap = Hap.shift(hap, 1.0)
+
+      assert hap.whole == nil
+      assert hap.part == %{begin: 1.0, end: 1.5}
+    end
+  end
+
+  describe "scale/2" do
+    test "scales both whole and part for discrete hap" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      hap = Hap.scale(hap, 0.5)
+
+      assert hap.whole == %{begin: 0.0, end: 0.5}
+      assert hap.part == %{begin: 0.0, end: 0.5}
+    end
+
+    test "scales only part for continuous hap" do
+      hap = Hap.continuous(TimeSpan.new(0.0, 1.0), %{freq: 440.0})
+      hap = Hap.scale(hap, 0.5)
+
+      assert hap.whole == nil
+      assert hap.part == %{begin: 0.0, end: 0.5}
+    end
+  end
+
+  describe "whole vs part semantics" do
+    test "hap represents boundary-clipped event" do
+      # Event naturally spans [0.8, 1.2)
+      # Query is [0.0, 1.0), so part is clipped
+      hap = %Hap{
+        whole: %{begin: 0.8, end: 1.2},
+        part: %{begin: 0.8, end: 1.0},
+        value: %{s: "bd"},
+        context: %{locations: [], tags: []}
+      }
+
+      # Onset is at whole.begin, not part.begin
+      assert Hap.onset(hap) == 0.8
+
+      # Duration is from whole, not part
+      assert_in_delta Hap.duration(hap), 0.4, 0.0001
+
+      # The scheduler should trigger at onset (0.8)
+      # even though our query only covered [0.8, 1.0)
+    end
+  end
+end
