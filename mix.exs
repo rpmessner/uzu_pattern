@@ -44,6 +44,12 @@ defmodule UzuPattern.MixProject do
   defp deps do
     [
       {:uzu_parser, path: "../uzu_parser"},
+
+      # Music theory (scales, chords, notes → MIDI)
+      {:harmony, path: "../harmony", override: true},
+
+      # Jazz standards chord progressions (Real Book data)
+      {:real_book, path: "../real_book_ex"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

@@ -45,10 +45,11 @@ defmodule UzuPattern.Pattern do
   - `Pattern.Effects` - set_param, gain, pan, speed, cut, room, delay, lpf, hpf
   - `Pattern.Rhythm` - euclid, euclid_rot, swing, swing_by
   - `Pattern.Signal` - sine, saw, tri, square, rand, range, segment
+  - `Pattern.Harmony` - form, scale (harmonic transformations)
   """
 
   alias UzuPattern.Event
-  alias UzuPattern.Pattern.{Time, Structure, Conditional, Effects, Rhythm, Signal}
+  alias UzuPattern.Pattern.{Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony}
 
   @type query_fn :: (non_neg_integer() -> [Event.t()])
 
@@ -376,6 +377,28 @@ defmodule UzuPattern.Pattern do
   defdelegate segment(pattern, n), to: Signal
   defdelegate with_value(pattern, value_fn), to: Signal
   defdelegate sample_at(pattern, time), to: Signal
+
+  # ============================================================================
+  # Harmony Delegations
+  # ============================================================================
+
+  defdelegate form(song_name), to: Harmony
+  defdelegate scale(pattern, scale_name), to: Harmony
+  defdelegate scale(pattern), to: Harmony
+
+  # ============================================================================
+  # Visualization Delegations
+  # ============================================================================
+
+  alias UzuPattern.Pattern.Visualization
+
+  defdelegate pianoroll(pattern, opts \\ []), to: Visualization
+  defdelegate spiral(pattern, opts \\ []), to: Visualization
+  defdelegate punchcard(pattern, opts \\ []), to: Visualization
+  defdelegate spectrum(pattern, opts \\ []), to: Visualization
+  defdelegate scope(pattern, opts \\ []), to: Visualization
+  defdelegate get_painters(pattern), to: Visualization
+  defdelegate has_painters?(pattern), to: Visualization
 
   # ============================================================================
   # Query
