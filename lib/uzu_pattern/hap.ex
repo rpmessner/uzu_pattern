@@ -69,7 +69,7 @@ defmodule UzuPattern.Hap do
   Metadata accumulated through pattern operations:
 
       %{
-        locations: [%{source_start: 0, source_end: 5}],
+        locations: [%{start: 0, end: 5}],
         tags: ["drums", "loop"]
       }
   """
@@ -184,13 +184,47 @@ defmodule UzuPattern.Hap do
   Add a source location to the context.
 
   Locations track where in the source code this hap originated,
-  useful for editor highlighting.
+  useful for editor highlighting. Uses Strudel convention: {start, end}.
   """
-  @spec with_location(t(), map()) :: t()
-  def with_location(%__MODULE__{context: context} = hap, location) do
+  @spec with_location(t(), non_neg_integer(), non_neg_integer()) :: t()
+  def with_location(%__MODULE__{context: context} = hap, start_pos, end_pos) do
+    location = %{start: start_pos, end: end_pos}
     locations = Map.get(context, :locations, [])
     %{hap | context: Map.put(context, :locations, locations ++ [location])}
   end
+
+  @doc """
+  Get the first source location as {start, end} tuple.
+
+  Returns nil if no locations are present.
+  """
+  @spec location(t()) :: {non_neg_integer(), non_neg_integer()} | nil
+  def location(%__MODULE__{context: %{locations: [%{start: s, end: e} | _]}}), do: {s, e}
+  def location(%__MODULE__{}), do: nil
+
+  @doc """
+  Get all source locations as list of {start, end} tuples.
+  """
+  @spec locations(t()) :: [{non_neg_integer(), non_neg_integer()}]
+  def locations(%__MODULE__{context: %{locations: locs}}) do
+    Enum.map(locs, fn %{start: s, end: e} -> {s, e} end)
+  end
+
+  def locations(%__MODULE__{}), do: []
+
+  @doc """
+  Get the sound name from value.s
+  """
+  @spec sound(t()) :: String.t() | nil
+  def sound(%__MODULE__{value: %{s: s}}), do: s
+  def sound(%__MODULE__{}), do: nil
+
+  @doc """
+  Get the sample number from value.n
+  """
+  @spec sample(t()) :: non_neg_integer() | nil
+  def sample(%__MODULE__{value: %{n: n}}), do: n
+  def sample(%__MODULE__{}), do: nil
 
   @doc """
   Add a tag to the context.

@@ -40,7 +40,7 @@ defmodule UzuPattern do
 
   ```elixir
   %Pattern{
-    query: fn cycle -> [%Event{}, ...] end,
+    query: fn cycle -> [%Hap{}, ...] end,
     metadata: %{}
   }
   ```

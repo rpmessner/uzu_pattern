@@ -24,6 +24,7 @@ defmodule UzuPattern.Pattern.Effects do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Signal
+  alias UzuPattern.Hap
 
   @doc """
   Set a parameter on all events in the pattern.
@@ -39,25 +40,26 @@ defmodule UzuPattern.Pattern.Effects do
       s("bd sd") |> set_param(:lpf, sine() |> range(200, 2000))
   """
   def set_param(%Pattern{} = pattern, key, %Pattern{} = signal_pattern) do
-    # Value is a signal - sample at each event's onset time
+    # Value is a signal - sample at each hap's onset time
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        # Sample the signal at this event's absolute time
-        value = Signal.sample_at(signal_pattern, cycle + event.time)
-        %{event | params: Map.put(event.params, key, value)}
+      |> Enum.map(fn hap ->
+        # Sample the signal at this hap's absolute time
+        onset = Hap.onset(hap) || hap.part.begin
+        value = Signal.sample_at(signal_pattern, cycle + onset)
+        %{hap | value: Map.put(hap.value, key, value)}
       end)
     end)
   end
 
   def set_param(%Pattern{} = pattern, key, value) do
-    # Value is static - apply to all events
+    # Value is static - apply to all haps
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        %{event | params: Map.put(event.params, key, value)}
+      |> Enum.map(fn hap ->
+        %{hap | value: Map.put(hap.value, key, value)}
       end)
     end)
   end

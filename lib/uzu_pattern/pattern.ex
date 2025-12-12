@@ -48,10 +48,11 @@ defmodule UzuPattern.Pattern do
   - `Pattern.Harmony` - form, scale (harmonic transformations)
   """
 
-  alias UzuPattern.Event
+  alias UzuPattern.Hap
+  alias UzuPattern.TimeSpan
   alias UzuPattern.Pattern.{Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony}
 
-  @type query_fn :: (non_neg_integer() -> [Event.t()])
+  @type query_fn :: (non_neg_integer() -> [Hap.t()])
 
   @type t :: %__MODULE__{
           query: query_fn(),
@@ -78,8 +79,8 @@ defmodule UzuPattern.Pattern do
 
   ## Examples
 
-      # From query function
-      iex> pattern = Pattern.new(fn _cycle -> [%Event{sound: "bd", time: 0.0, duration: 1.0}] end)
+      # From query function (returns Haps)
+      iex> pattern = Pattern.new(fn _cycle -> [%Hap{whole: ..., part: ..., value: %{s: "bd"}, context: ...}] end)
 
       # From string
       iex> pattern = Pattern.new("bd sd hh")
@@ -118,23 +119,30 @@ defmodule UzuPattern.Pattern do
   def pure(value, opts \\ []) when is_binary(value) do
     sample = Keyword.get(opts, :sample)
     params = Keyword.get(opts, :params, %{})
-    source_start = Keyword.get(opts, :source_start)
-    source_end = Keyword.get(opts, :source_end)
+    loc_start = Keyword.get(opts, :start)
+    loc_end = Keyword.get(opts, :end)
+
+    # Build value map: s is sound, n is sample (if present), plus params
+    hap_value =
+      %{s: value}
+      |> maybe_put(:n, sample)
+      |> Map.merge(params)
+
+    # Build context from source location (Strudel convention: start/end)
+    context =
+      if loc_start != nil do
+        %{locations: [%{start: loc_start, end: loc_end}], tags: []}
+      else
+        %{locations: [], tags: []}
+      end
 
     new(fn _cycle ->
-      [
-        %Event{
-          sound: value,
-          sample: sample,
-          time: 0.0,
-          duration: 1.0,
-          params: params,
-          source_start: source_start,
-          source_end: source_end
-        }
-      ]
+      [Hap.new(%{begin: 0.0, end: 1.0}, hap_value, context)]
     end)
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, val), do: Map.put(map, key, val)
 
   @doc """
   Create an empty/silent pattern.
@@ -144,12 +152,15 @@ defmodule UzuPattern.Pattern do
   end
 
   @doc """
-  Create a pattern from a list of pre-computed events.
-  The events will be returned unchanged for any cycle.
+  Create a pattern from a list of pre-computed haps.
+  The haps will be returned unchanged for any cycle.
   """
-  def from_events(events) when is_list(events) do
-    new(fn _cycle -> events end)
+  def from_haps(haps) when is_list(haps) do
+    new(fn _cycle -> haps end)
   end
+
+  # Alias for backwards compat
+  def from_events(haps), do: from_haps(haps)
 
   # ============================================================================
   # Pattern Combinators
@@ -229,15 +240,23 @@ defmodule UzuPattern.Pattern do
       |> Enum.flat_map(fn {pattern, index} ->
         offset = index * step
 
-        # Query pattern (it returns events in [0, 1))
-        # Scale and shift those events to fit in this slot
+        # Query pattern (it returns haps in [0, 1))
+        # Scale and shift those haps to fit in this slot
         pattern
         |> query(cycle)
-        |> Enum.map(fn event ->
-          %{event | time: offset + event.time * step, duration: event.duration * step}
+        |> Enum.map(fn hap ->
+          new_whole = scale_and_offset_timespan(hap.whole, step, offset)
+          new_part = scale_and_offset_timespan(hap.part, step, offset)
+          %{hap | whole: new_whole, part: new_part}
         end)
       end)
     end)
+  end
+
+  defp scale_and_offset_timespan(nil, _scale, _offset), do: nil
+
+  defp scale_and_offset_timespan(%{begin: b, end: e}, scale, offset) do
+    %{begin: offset + b * scale, end: offset + e * scale}
   end
 
   @doc """
@@ -385,6 +404,7 @@ defmodule UzuPattern.Pattern do
   defdelegate form(song_name), to: Harmony
   defdelegate scale(pattern, scale_name), to: Harmony
   defdelegate scale(pattern), to: Harmony
+  defdelegate octave(pattern, octave_pattern), to: Harmony
 
   # ============================================================================
   # Visualization Delegations
@@ -405,39 +425,105 @@ defmodule UzuPattern.Pattern do
   # ============================================================================
 
   @doc """
+  Query the pattern for a time arc (Strudel-style).
+
+  Takes a TimeSpan and returns haps with absolute timing.
+  Splits the query at cycle boundaries internally.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd")
+      iex> haps = Pattern.query_arc(pattern, TimeSpan.new(0, 2))
+      iex> length(haps)
+      4
+  """
+  def query_arc(%__MODULE__{} = pattern, %{begin: _, end: _} = span) do
+    TimeSpan.span_cycles(span)
+    |> Enum.flat_map(fn cycle_span ->
+      cycle = TimeSpan.cycle_of(cycle_span)
+
+      query_cycle(pattern, cycle)
+      |> Enum.map(&shift_hap_time(&1, cycle))
+      |> Enum.filter(fn hap ->
+        # Filter to haps that start within this span
+        hap.part.begin >= cycle_span.begin and hap.part.begin < cycle_span.end
+      end)
+    end)
+  end
+
+  def query_arc(nil, _span), do: []
+
+  # Shift hap timing by cycle offset to convert to absolute time
+  defp shift_hap_time(hap, 0), do: hap
+
+  defp shift_hap_time(hap, cycle) do
+    %{
+      hap
+      | whole: hap.whole && %{hap.whole | begin: hap.whole.begin + cycle, end: hap.whole.end + cycle},
+        part: %{hap.part | begin: hap.part.begin + cycle, end: hap.part.end + cycle}
+    }
+  end
+
+  @doc """
   Query the pattern for events at a specific cycle.
 
-  Returns a list of events with time values in [0, 1).
+  Returns a list of haps with cycle-relative timing (values in [0, 1)).
+  For absolute timing, use `query_arc/2` instead.
   """
-  def query(%__MODULE__{query: query_fn}, cycle) when is_integer(cycle) and cycle >= 0 do
-    query_fn.(cycle)
+  def query(%__MODULE__{} = pattern, cycle) when is_integer(cycle) and cycle >= 0 do
+    query_cycle(pattern, cycle)
   end
 
   def query(nil, _cycle), do: []
 
-  @doc """
-  Query the pattern and convert to scheduler format.
-
-  Returns events as maps with :time, :s, :n, :dur, etc.
-  """
-  def query_for_scheduler(%__MODULE__{} = pattern, cycle) do
-    pattern
-    |> query(cycle)
-    |> Enum.map(&event_to_scheduler_map/1)
+  # Internal: query raw cycle from the query function
+  defp query_cycle(%__MODULE__{query: query_fn}, cycle) do
+    query_fn.(cycle)
   end
 
-  defp event_to_scheduler_map(%Event{} = event) do
+  @doc """
+  Query the pattern and return Haps as JSON-serializable maps.
+
+  Preserves the Hap structure for proper client-side consumption:
+  - whole: TimeSpan or null (for continuous)
+  - part: TimeSpan
+  - value: sound params (s, n, note, gain, etc.)
+  - context: metadata (locations, tags)
+
+  Times are normalized to be relative within the cycle (0.0-1.0).
+  This allows the browser scheduler to wrap cycles without timing mismatches.
+  """
+  def query_for_scheduler(%__MODULE__{} = pattern, cycle) do
+    span = TimeSpan.new(cycle, cycle + 1)
+
+    pattern
+    |> query_arc(span)
+    |> Enum.map(&hap_to_json(&1, cycle))
+  end
+
+  @doc """
+  Convert a Hap struct to a JSON-serializable map.
+
+  The cycle parameter is used to normalize times to be relative (0.0-1.0).
+  This is essential for cycle wrapping in the browser scheduler.
+  """
+  def hap_to_json(%Hap{} = hap, cycle \\ 0) do
     %{
-      time: event.time,
-      s: event.sound,
-      n: event.sample,
-      dur: event.duration,
-      source_start: event.source_start,
-      source_end: event.source_end
+      whole: timespan_to_json(hap.whole, cycle),
+      part: timespan_to_json(hap.part, cycle),
+      value: hap.value,
+      context: %{
+        locations: hap.context.locations || [],
+        tags: hap.context.tags || []
+      }
     }
-    |> Map.merge(event.params)
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Map.new()
+  end
+
+  defp timespan_to_json(nil, _cycle), do: nil
+
+  defp timespan_to_json(%{begin: b, end: e}, cycle) do
+    # Normalize to relative time within cycle (0.0-1.0)
+    %{begin: b - cycle, end: e - cycle}
   end
 
   # ============================================================================
@@ -502,14 +588,20 @@ defmodule UzuPattern.Pattern do
       1
   """
   def detect_period(%__MODULE__{} = pattern, max_cycles \\ 64) do
-    # Get cycle 0 as reference
-    cycle_0 = query_for_scheduler(pattern, 0)
+    # Get cycle 0 as reference, normalized to remove absolute timing
+    cycle_0 = normalize_cycle_content(query_for_scheduler(pattern, 0))
 
     # Find first cycle that matches cycle 0
     1..max_cycles
     |> Enum.find(fn cycle ->
-      query_for_scheduler(pattern, cycle) == cycle_0
+      normalize_cycle_content(query_for_scheduler(pattern, cycle)) == cycle_0
     end)
+  end
+
+  # For period detection, only compare values (what sounds play)
+  # Timing varies by cycle, so we ignore whole/part
+  defp normalize_cycle_content(haps) do
+    Enum.map(haps, fn hap -> hap.value end)
   end
 
   @doc """

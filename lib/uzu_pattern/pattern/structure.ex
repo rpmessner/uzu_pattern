@@ -14,6 +14,7 @@ defmodule UzuPattern.Pattern.Structure do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Effects
+  alias UzuPattern.Hap
 
   @doc """
   Reverse the pattern within each cycle.
@@ -22,10 +23,13 @@ defmodule UzuPattern.Pattern.Structure do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        %{event | time: 1.0 - event.time - event.duration}
+      |> Enum.map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        dur = hap.part.end - hap.part.begin
+        new_onset = 1.0 - onset - dur
+        set_hap_timespan(hap, new_onset, new_onset + dur)
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
     end)
   end
 
@@ -44,12 +48,15 @@ defmodule UzuPattern.Pattern.Structure do
   """
   def struct_fn(%Pattern{} = pattern, %Pattern{} = structure) do
     Pattern.new(fn cycle ->
-      pattern_events = Pattern.query(pattern, cycle)
-      struct_events = Pattern.query(structure, cycle)
+      pattern_haps = Pattern.query(pattern, cycle)
+      struct_haps = Pattern.query(structure, cycle)
 
-      Enum.filter(pattern_events, fn event ->
-        Enum.any?(struct_events, fn struct_event ->
-          abs(event.time - struct_event.time) < 0.001
+      Enum.filter(pattern_haps, fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+
+        Enum.any?(struct_haps, fn struct_hap ->
+          struct_onset = Hap.onset(struct_hap) || struct_hap.part.begin
+          abs(onset - struct_onset) < 0.001
         end)
       end)
     end)
@@ -63,17 +70,21 @@ defmodule UzuPattern.Pattern.Structure do
   """
   def mask(%Pattern{} = pattern, %Pattern{} = mask_pattern) do
     Pattern.new(fn cycle ->
-      pattern_events = Pattern.query(pattern, cycle)
-      mask_events = Pattern.query(mask_pattern, cycle)
+      pattern_haps = Pattern.query(pattern, cycle)
+      mask_haps = Pattern.query(mask_pattern, cycle)
 
-      active_mask_events =
-        Enum.filter(mask_events, fn event ->
-          event.sound not in ["0", "~", "rest"]
+      active_mask_haps =
+        Enum.filter(mask_haps, fn hap ->
+          sound = Map.get(hap.value, :s, "")
+          sound not in ["0", "~", "rest"]
         end)
 
-      Enum.filter(pattern_events, fn event ->
-        Enum.any?(active_mask_events, fn mask_event ->
-          abs(event.time - mask_event.time) < 0.001
+      Enum.filter(pattern_haps, fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+
+        Enum.any?(active_mask_haps, fn mask_hap ->
+          mask_onset = Hap.onset(mask_hap) || mask_hap.part.begin
+          abs(onset - mask_onset) < 0.001
         end)
       end)
     end)
@@ -91,7 +102,7 @@ defmodule UzuPattern.Pattern.Structure do
 
       pattern
       |> Pattern.query(cycle)
-      |> Enum.filter(fn _event -> :rand.uniform() > probability end)
+      |> Enum.filter(fn _hap -> :rand.uniform() > probability end)
     end)
   end
 
@@ -161,24 +172,28 @@ defmodule UzuPattern.Pattern.Structure do
       when is_integer(n) and n > 0 and is_number(time_offset) and
              is_number(gain_factor) and gain_factor >= 0.0 and gain_factor <= 1.0 do
     Pattern.new(fn cycle ->
-      base_events = Pattern.query(pattern, cycle)
+      base_haps = Pattern.query(pattern, cycle)
 
       echoes =
         for i <- 1..n do
           offset = time_offset * i
           gain_mult = :math.pow(gain_factor, i)
 
-          Enum.map(base_events, fn e ->
-            new_time = e.time + offset
-            wrapped_time = new_time - Float.floor(new_time)
-            current_gain = Map.get(e.params, :gain, 1.0)
+          Enum.map(base_haps, fn hap ->
+            onset = Hap.onset(hap) || hap.part.begin
+            dur = hap.part.end - hap.part.begin
+            new_onset = onset + offset
+            wrapped_onset = new_onset - Float.floor(new_onset)
+            current_gain = Map.get(hap.value, :gain, 1.0)
 
-            %{e | time: wrapped_time, params: Map.put(e.params, :gain, current_gain * gain_mult)}
+            hap
+            |> set_hap_timespan(wrapped_onset, wrapped_onset + dur)
+            |> put_in([Access.key(:value), :gain], current_gain * gain_mult)
           end)
         end
         |> List.flatten()
 
-      Enum.sort_by(base_events ++ echoes, & &1.time)
+      Enum.sort_by(base_haps ++ echoes, &(Hap.onset(&1) || &1.part.begin))
     end)
   end
 
@@ -189,14 +204,17 @@ defmodule UzuPattern.Pattern.Structure do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.flat_map(fn event ->
-        slice_duration = event.duration / n
+      |> Enum.flat_map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        dur = hap.part.end - hap.part.begin
+        slice_dur = dur / n
 
         for i <- 0..(n - 1) do
-          %{event | time: event.time + i * slice_duration, duration: slice_duration}
+          new_onset = onset + i * slice_dur
+          set_hap_timespan(hap, new_onset, new_onset + slice_dur)
         end
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
     end)
   end
 
@@ -209,14 +227,23 @@ defmodule UzuPattern.Pattern.Structure do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.flat_map(fn event ->
-        piece_duration = event.duration / n
+      |> Enum.flat_map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        dur = hap.part.end - hap.part.begin
+        piece_dur = dur / n
 
         for i <- 0..(n - 1) do
-          %{event | time: event.time + i * piece_duration, duration: piece_duration}
+          new_onset = onset + i * piece_dur
+          set_hap_timespan(hap, new_onset, new_onset + piece_dur)
         end
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
     end)
+  end
+
+  # Set a hap's timespan to specific begin/end values
+  defp set_hap_timespan(%Hap{} = hap, begin_time, end_time) do
+    timespan = %{begin: begin_time, end: end_time}
+    %{hap | whole: timespan, part: timespan}
   end
 end

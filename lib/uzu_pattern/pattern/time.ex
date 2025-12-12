@@ -11,6 +11,7 @@ defmodule UzuPattern.Pattern.Time do
   """
 
   alias UzuPattern.Pattern
+  alias UzuPattern.Hap
 
   @doc """
   Speed up a pattern by factor n.
@@ -20,8 +21,8 @@ defmodule UzuPattern.Pattern.Time do
   ## Examples
 
       iex> p = Pattern.pure("bd") |> Pattern.fast(4)
-      iex> events = Pattern.query(p, 0)
-      iex> length(events)
+      iex> haps = Pattern.query(p, 0)
+      iex> length(haps)
       4
   """
   def fast(%Pattern{} = pattern, factor) when is_number(factor) and factor > 0 do
@@ -39,18 +40,15 @@ defmodule UzuPattern.Pattern.Time do
 
             pattern
             |> Pattern.query(inner_cycle)
-            |> Enum.map(fn event ->
-              %{
-                event
-                | time: time_offset + event.time / factor,
-                  duration: event.duration / factor
-              }
+            |> Enum.map(fn hap ->
+              scale_and_offset_hap(hap, 1.0 / factor, time_offset)
             end)
           end)
-          |> Enum.filter(fn event ->
-            event.time >= 0.0 and event.time < 1.0
+          |> Enum.filter(fn hap ->
+            onset = Hap.onset(hap) || hap.part.begin
+            onset >= 0.0 and onset < 1.0
           end)
-          |> Enum.sort_by(& &1.time)
+          |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
         end)
 
       factor < 1 ->
@@ -78,13 +76,17 @@ defmodule UzuPattern.Pattern.Time do
 
       pattern
       |> Pattern.query(inner_cycle)
-      |> Enum.filter(fn event ->
-        event.time >= slice_start and event.time < slice_end
+      |> Enum.filter(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        onset >= slice_start and onset < slice_end
       end)
-      |> Enum.map(fn event ->
-        new_time = (event.time - slice_start) * factor
-        new_duration = event.duration * factor
-        %{event | time: new_time, duration: min(new_duration, 1.0 - new_time)}
+      |> Enum.map(fn hap ->
+        # Scale up and shift so this slice fills the whole cycle
+        onset = Hap.onset(hap) || hap.part.begin
+        new_onset = (onset - slice_start) * factor
+        dur = hap.part.end - hap.part.begin
+        new_dur = min(dur * factor, 1.0 - new_onset)
+        set_hap_timespan(hap, new_onset, new_onset + new_dur)
       end)
     end)
   end
@@ -96,12 +98,18 @@ defmodule UzuPattern.Pattern.Time do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        new_time = event.time - amount
-        wrapped = if new_time < 0, do: new_time + 1.0, else: new_time
-        %{event | time: wrapped}
+      |> Enum.map(fn hap ->
+        shifted = Hap.shift(hap, -amount)
+        # Wrap if onset went negative
+        onset = Hap.onset(shifted) || shifted.part.begin
+
+        if onset < 0 do
+          Hap.shift(shifted, 1.0)
+        else
+          shifted
+        end
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
     end)
   end
 
@@ -121,22 +129,24 @@ defmodule UzuPattern.Pattern.Time do
   ## Examples
 
       iex> p = Pattern.pure("bd") |> Pattern.ply(4)
-      iex> events = Pattern.query(p, 0)
-      iex> length(events)
+      iex> haps = Pattern.query(p, 0)
+      iex> length(haps)
       4
   """
   def ply(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.flat_map(fn event ->
-        event_duration = event.duration / n
+      |> Enum.flat_map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        dur = (hap.part.end - hap.part.begin) / n
 
         for i <- 0..(n - 1) do
-          %{event | time: event.time + i * event_duration, duration: event_duration}
+          new_onset = onset + i * dur
+          set_hap_timespan(hap, new_onset, new_onset + dur)
         end
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
     end)
   end
 
@@ -153,10 +163,17 @@ defmodule UzuPattern.Pattern.Time do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        %{event | time: start_time + event.time * span, duration: event.duration * span}
+      |> Enum.map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        dur = hap.part.end - hap.part.begin
+        new_onset = start_time + onset * span
+        new_dur = dur * span
+        set_hap_timespan(hap, new_onset, new_onset + new_dur)
       end)
-      |> Enum.filter(fn event -> event.time < 1.0 end)
+      |> Enum.filter(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        onset < 1.0
+      end)
     end)
   end
 
@@ -175,13 +192,16 @@ defmodule UzuPattern.Pattern.Time do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.filter(fn event ->
-        event.time >= start_time and event.time < end_time
+      |> Enum.filter(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        onset >= start_time and onset < end_time
       end)
-      |> Enum.map(fn event ->
-        new_time = (event.time - start_time) / span
-        new_duration = event.duration / span
-        %{event | time: new_time, duration: new_duration}
+      |> Enum.map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        dur = hap.part.end - hap.part.begin
+        new_onset = (onset - start_time) / span
+        new_dur = dur / span
+        set_hap_timespan(hap, new_onset, new_onset + new_dur)
       end)
     end)
   end
@@ -202,17 +222,39 @@ defmodule UzuPattern.Pattern.Time do
       extracted =
         pattern
         |> Pattern.query(cycle)
-        |> Enum.filter(fn event -> event.time < fraction end)
+        |> Enum.filter(fn hap ->
+          onset = Hap.onset(hap) || hap.part.begin
+          onset < fraction
+        end)
 
       for rep <- 0..(repetitions - 1) do
         offset = rep * fraction
 
-        Enum.map(extracted, fn event ->
-          %{event | time: event.time + offset}
+        Enum.map(extracted, fn hap ->
+          Hap.shift(hap, offset)
         end)
       end
       |> List.flatten()
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
     end)
+  end
+
+  # Helper: scale and offset a hap's timespans
+  defp scale_and_offset_hap(%Hap{} = hap, scale, offset) do
+    new_whole = scale_and_offset_timespan(hap.whole, scale, offset)
+    new_part = scale_and_offset_timespan(hap.part, scale, offset)
+    %{hap | whole: new_whole, part: new_part}
+  end
+
+  defp scale_and_offset_timespan(nil, _scale, _offset), do: nil
+
+  defp scale_and_offset_timespan(%{begin: b, end: e}, scale, offset) do
+    %{begin: offset + b * scale, end: offset + e * scale}
+  end
+
+  # Set a hap's timespan to specific begin/end values
+  defp set_hap_timespan(%Hap{} = hap, begin_time, end_time) do
+    timespan = %{begin: begin_time, end: end_time}
+    %{hap | whole: timespan, part: timespan}
   end
 end

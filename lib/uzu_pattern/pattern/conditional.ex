@@ -13,6 +13,7 @@ defmodule UzuPattern.Pattern.Conditional do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Time
+  alias UzuPattern.Hap
 
   @doc """
   Apply a function every n cycles.
@@ -177,18 +178,20 @@ defmodule UzuPattern.Pattern.Conditional do
       chunk_start = chunk_index / n
       chunk_end = (chunk_index + 1) / n
 
-      events = Pattern.query(pattern, cycle)
+      haps = Pattern.query(pattern, cycle)
 
-      Enum.map(events, fn event ->
-        if event.time >= chunk_start and event.time < chunk_end do
-          temp_pattern = Pattern.from_events([event])
+      Enum.map(haps, fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+
+        if onset >= chunk_start and onset < chunk_end do
+          temp_pattern = Pattern.from_haps([hap])
 
           case Pattern.query(fun.(temp_pattern), cycle) do
             [transformed] -> transformed
-            _ -> event
+            _ -> hap
           end
         else
-          event
+          hap
         end
       end)
     end)
@@ -204,18 +207,20 @@ defmodule UzuPattern.Pattern.Conditional do
       chunk_start = chunk_index / n
       chunk_end = (chunk_index + 1) / n
 
-      events = Pattern.query(pattern, cycle)
+      haps = Pattern.query(pattern, cycle)
 
-      Enum.map(events, fn event ->
-        if event.time >= chunk_start and event.time < chunk_end do
-          temp_pattern = Pattern.from_events([event])
+      Enum.map(haps, fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+
+        if onset >= chunk_start and onset < chunk_end do
+          temp_pattern = Pattern.from_haps([hap])
 
           case Pattern.query(fun.(temp_pattern), cycle) do
             [transformed] -> transformed
-            _ -> event
+            _ -> hap
           end
         else
-          event
+          hap
         end
       end)
     end)

@@ -9,6 +9,7 @@ defmodule UzuPattern.Pattern.Rhythm do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Euclidean
+  alias UzuPattern.Hap
 
   @doc """
   Create a Euclidean rhythm - evenly distributing pulses across steps.
@@ -28,7 +29,7 @@ defmodule UzuPattern.Pattern.Rhythm do
     step_size = 1.0 / steps
 
     Pattern.new(fn cycle ->
-      base_events = Pattern.query(pattern, cycle)
+      base_haps = Pattern.query(pattern, cycle)
 
       pulse_indices =
         rhythm
@@ -36,13 +37,14 @@ defmodule UzuPattern.Pattern.Rhythm do
         |> Enum.filter(fn {hit, _idx} -> hit == 1 end)
         |> Enum.map(fn {_hit, idx} -> idx end)
 
-      base_events
+      base_haps
       |> Enum.with_index()
-      |> Enum.filter(fn {_event, idx} -> idx in pulse_indices end)
-      |> Enum.map(fn {event, idx} ->
-        %{event | time: idx * step_size, duration: step_size}
+      |> Enum.filter(fn {_hap, idx} -> idx in pulse_indices end)
+      |> Enum.map(fn {hap, idx} ->
+        time = idx * step_size
+        set_hap_timespan(hap, time, time + step_size)
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&Hap.onset/1)
     end)
   end
 
@@ -58,7 +60,7 @@ defmodule UzuPattern.Pattern.Rhythm do
     step_size = 1.0 / steps
 
     Pattern.new(fn cycle ->
-      base_events = Pattern.query(pattern, cycle)
+      base_haps = Pattern.query(pattern, cycle)
 
       pulse_indices =
         rhythm
@@ -66,13 +68,14 @@ defmodule UzuPattern.Pattern.Rhythm do
         |> Enum.filter(fn {hit, _idx} -> hit == 1 end)
         |> Enum.map(fn {_hit, idx} -> idx end)
 
-      base_events
+      base_haps
       |> Enum.with_index()
-      |> Enum.filter(fn {_event, idx} -> idx in pulse_indices end)
-      |> Enum.map(fn {event, idx} ->
-        %{event | time: idx * step_size, duration: step_size}
+      |> Enum.filter(fn {_hap, idx} -> idx in pulse_indices end)
+      |> Enum.map(fn {hap, idx} ->
+        time = idx * step_size
+        set_hap_timespan(hap, time, time + step_size)
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&Hap.onset/1)
     end)
   end
 
@@ -99,21 +102,26 @@ defmodule UzuPattern.Pattern.Rhythm do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        slice_idx = floor(event.time / slice_size)
-        position_in_slice = event.time - slice_idx * slice_size
+      |> Enum.map(fn hap ->
+        onset = Hap.onset(hap) || hap.part.begin
+        slice_idx = floor(onset / slice_size)
+        position_in_slice = onset - slice_idx * slice_size
         half_slice = slice_size / 2
 
         if position_in_slice >= half_slice do
           delay_amount = amount * half_slice
-          new_time = event.time + delay_amount
-          wrapped_time = new_time - Float.floor(new_time)
-          %{event | time: wrapped_time}
+          Hap.shift(hap, delay_amount)
         else
-          event
+          hap
         end
       end)
-      |> Enum.sort_by(& &1.time)
+      |> Enum.sort_by(&Hap.onset/1)
     end)
+  end
+
+  # Set a hap's timespan to specific begin/end values
+  defp set_hap_timespan(%Hap{} = hap, begin_time, end_time) do
+    timespan = %{begin: begin_time, end: end_time}
+    %{hap | whole: timespan, part: timespan}
   end
 end

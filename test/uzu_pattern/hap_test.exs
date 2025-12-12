@@ -97,21 +97,67 @@ defmodule UzuPattern.HapTest do
     end
   end
 
-  describe "with_location/2" do
+  describe "with_location/3" do
     test "adds location to context" do
       hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
-      hap = Hap.with_location(hap, %{source_start: 0, source_end: 5})
+      hap = Hap.with_location(hap, 0, 5)
 
-      assert hap.context.locations == [%{source_start: 0, source_end: 5}]
+      assert hap.context.locations == [%{start: 0, end: 5}]
     end
 
     test "accumulates multiple locations" do
       hap =
         Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
-        |> Hap.with_location(%{source_start: 0, source_end: 5})
-        |> Hap.with_location(%{source_start: 10, source_end: 15})
+        |> Hap.with_location(0, 5)
+        |> Hap.with_location(10, 15)
 
       assert length(hap.context.locations) == 2
+    end
+  end
+
+  describe "location/1 and locations/1" do
+    test "location returns first as tuple" do
+      hap =
+        Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+        |> Hap.with_location(0, 5)
+
+      assert Hap.location(hap) == {0, 5}
+    end
+
+    test "location returns nil when no locations" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      assert Hap.location(hap) == nil
+    end
+
+    test "locations returns all as tuples" do
+      hap =
+        Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+        |> Hap.with_location(0, 5)
+        |> Hap.with_location(10, 15)
+
+      assert Hap.locations(hap) == [{0, 5}, {10, 15}]
+    end
+  end
+
+  describe "sound/1 and sample/1" do
+    test "sound returns value.s" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      assert Hap.sound(hap) == "bd"
+    end
+
+    test "sound returns nil when no s" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{freq: 440})
+      assert Hap.sound(hap) == nil
+    end
+
+    test "sample returns value.n" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd", n: 2})
+      assert Hap.sample(hap) == 2
+    end
+
+    test "sample returns nil when no n" do
+      hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
+      assert Hap.sample(hap) == nil
     end
   end
 

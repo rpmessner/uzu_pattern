@@ -17,6 +17,7 @@ defmodule UzuPattern.Interpreter do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Euclidean
+  alias UzuPattern.Hap
 
   @doc """
   Interpret an AST into a Pattern.
@@ -148,20 +149,23 @@ defmodule UzuPattern.Interpreter do
 
       # Build a custom query that handles weighted timing
       Pattern.new(fn cycle ->
-        {events, _} =
+        {haps, _} =
           Enum.reduce(weighted_patterns, {[], 0.0}, fn {pattern, fraction}, {acc, offset} ->
-            # Query the pattern and rescale its events to this slot
-            pattern_events =
+            # Query the pattern and rescale its haps to this slot
+            pattern_haps =
               pattern
               |> Pattern.query(cycle)
-              |> Enum.map(fn event ->
-                %{event | time: offset + event.time * fraction, duration: event.duration * fraction}
+              |> Enum.map(fn hap ->
+                # Transform whole and part timespans
+                new_whole = scale_and_offset_timespan(hap.whole, fraction, offset)
+                new_part = scale_and_offset_timespan(hap.part, fraction, offset)
+                %{hap | whole: new_whole, part: new_part}
               end)
 
-            {acc ++ pattern_events, offset + fraction}
+            {acc ++ pattern_haps, offset + fraction}
           end)
 
-        events
+        haps
       end)
     end
   end
@@ -263,8 +267,8 @@ defmodule UzuPattern.Interpreter do
       atom.value,
       sample: atom[:sample],
       params: params,
-      source_start: atom[:source_start],
-      source_end: atom[:source_end]
+      start: atom[:source_start],
+      end: atom[:source_end]
     )
   end
 
@@ -298,7 +302,7 @@ defmodule UzuPattern.Interpreter do
 
     # Create a pattern that plays only on hits
     Pattern.new(fn cycle ->
-      base_events = Pattern.query(pattern, cycle)
+      base_haps = Pattern.query(pattern, cycle)
 
       rhythm
       |> Enum.with_index()
@@ -307,8 +311,8 @@ defmodule UzuPattern.Interpreter do
           step = 1.0 / n
           time = i * step
 
-          Enum.map(base_events, fn event ->
-            %{event | time: time, duration: step}
+          Enum.map(base_haps, fn hap ->
+            set_hap_timespan(hap, time, time + step)
           end)
         else
           []
@@ -345,8 +349,8 @@ defmodule UzuPattern.Interpreter do
 
             pattern
             |> Pattern.query(cycle)
-            |> Enum.map(fn event ->
-              %{event | time: time_offset, duration: step_duration}
+            |> Enum.map(fn hap ->
+              set_hap_timespan(hap, time_offset, time_offset + step_duration)
             end)
           end)
         end)
@@ -377,4 +381,21 @@ defmodule UzuPattern.Interpreter do
   defp extract_groups(groups: g), do: g
   defp extract_groups({:groups, g}), do: g
   defp extract_groups(_), do: []
+
+  # ============================================================================
+  # Hap Timespan Helpers
+  # ============================================================================
+
+  # Scale and offset a timespan (works for both whole and part)
+  defp scale_and_offset_timespan(nil, _fraction, _offset), do: nil
+
+  defp scale_and_offset_timespan(%{begin: b, end: e}, fraction, offset) do
+    %{begin: offset + b * fraction, end: offset + (b + (e - b)) * fraction}
+  end
+
+  # Set a hap's timespan to specific begin/end values
+  defp set_hap_timespan(%Hap{} = hap, begin_time, end_time) do
+    timespan = %{begin: begin_time, end: end_time}
+    %{hap | whole: timespan, part: timespan}
+  end
 end

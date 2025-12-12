@@ -1,18 +1,19 @@
 defmodule UzuPattern.Pattern.SignalTest do
   use ExUnit.Case, async: true
 
+  alias UzuPattern.Hap
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Signal
 
   describe "signal/1" do
     test "creates a pattern from a time function" do
       sig = Signal.signal(fn t -> t * 2 end)
-      [event] = Pattern.query(sig, 0)
+      [hap] = Pattern.query(sig, 0)
 
-      assert event.value == 0.0
-      assert event.continuous == true
-      assert event.time == 0.0
-      assert event.duration == 1.0
+      assert hap.value.value == 0.0
+      assert Hap.continuous?(hap)
+      assert hap.part.begin == 0.0
+      assert hap.part.end - hap.part.begin == 1.0
     end
 
     test "samples at cycle time via sample_at" do
@@ -32,9 +33,9 @@ defmodule UzuPattern.Pattern.SignalTest do
       [e1] = Pattern.query(sig, 1)
       [e2] = Pattern.query(sig, 2)
 
-      assert e0.value == 0.0
-      assert e1.value == 1.0
-      assert e2.value == 2.0
+      assert e0.value.value == 0.0
+      assert e1.value.value == 1.0
+      assert e2.value.value == 2.0
     end
   end
 
@@ -96,9 +97,9 @@ defmodule UzuPattern.Pattern.SignalTest do
       sig = Signal.rand()
 
       for cycle <- 0..10 do
-        [event] = Pattern.query(sig, cycle)
-        assert event.value >= 0.0
-        assert event.value <= 1.0
+        [hap] = Pattern.query(sig, cycle)
+        assert hap.value.value >= 0.0
+        assert hap.value.value <= 1.0
       end
     end
 
@@ -108,7 +109,7 @@ defmodule UzuPattern.Pattern.SignalTest do
       [e1] = Pattern.query(sig, 5)
       [e2] = Pattern.query(sig, 5)
 
-      assert e1.value == e2.value
+      assert e1.value.value == e2.value.value
     end
   end
 
@@ -117,8 +118,8 @@ defmodule UzuPattern.Pattern.SignalTest do
       sig = Signal.irand(4)
 
       for cycle <- 0..20 do
-        [event] = Pattern.query(sig, cycle)
-        assert event.value in [0, 1, 2, 3]
+        [hap] = Pattern.query(sig, cycle)
+        assert hap.value.value in [0, 1, 2, 3]
       end
     end
   end
@@ -142,14 +143,14 @@ defmodule UzuPattern.Pattern.SignalTest do
     test "discretizes signal into n events per cycle" do
       sig = Signal.saw() |> Signal.segment(4)
 
-      events = Pattern.query(sig, 0)
+      haps = Pattern.query(sig, 0)
 
-      assert length(events) == 4
+      assert length(haps) == 4
 
-      times = Enum.map(events, & &1.time)
+      times = Enum.map(haps, & &1.part.begin)
       assert times == [0.0, 0.25, 0.5, 0.75]
 
-      values = Enum.map(events, & &1.value)
+      values = Enum.map(haps, & &1.value.value)
       assert_in_delta Enum.at(values, 0), 0.0, 0.001
       assert_in_delta Enum.at(values, 1), 0.25, 0.001
       assert_in_delta Enum.at(values, 2), 0.5, 0.001
@@ -158,10 +159,10 @@ defmodule UzuPattern.Pattern.SignalTest do
 
     test "creates discrete (non-continuous) events" do
       sig = Signal.sine() |> Signal.segment(8)
-      events = Pattern.query(sig, 0)
+      haps = Pattern.query(sig, 0)
 
-      for event <- events do
-        assert event.continuous == false
+      for hap <- haps do
+        assert Hap.discrete?(hap)
       end
     end
   end
@@ -184,15 +185,15 @@ defmodule UzuPattern.Pattern.SignalTest do
       sig = Signal.saw() |> Pattern.fast(2) |> Signal.segment(4)
 
       # fast(2) then segment(4) means the saw cycles twice in 4 samples
-      events = Pattern.query(sig, 0)
-      assert length(events) == 4
+      haps = Pattern.query(sig, 0)
+      assert length(haps) == 4
     end
 
     test "slow slows down signal - fewer events per cycle" do
       sig = Signal.saw() |> Pattern.slow(2) |> Signal.segment(4)
 
-      events = Pattern.query(sig, 0)
-      assert length(events) == 4
+      haps = Pattern.query(sig, 0)
+      assert length(haps) == 4
 
       # At cycle 0 (slow 2), pattern queries cycle 0
       # At cycle 1 (slow 2), pattern queries cycle 0 still (since 1/2 = 0)

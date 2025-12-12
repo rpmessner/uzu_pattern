@@ -23,7 +23,8 @@ defmodule UzuPattern.Pattern.Harmony do
   """
 
   alias UzuPattern.Pattern
-  alias UzuPattern.Event
+  alias UzuPattern.Hap
+  alias UzuPattern.TimeSpan
 
   # ============================================================
   # form/1 - Load chord progression as a pattern
@@ -132,12 +133,11 @@ defmodule UzuPattern.Pattern.Harmony do
       chord = find_chord_at_beat(changes, beat)
 
       [
-        %Event{
-          time: 0.0,
-          duration: 1.0,
-          sound: chord,
-          value: chord,
-          params: %{}
+        %Hap{
+          whole: TimeSpan.new(cycle, cycle + 1),
+          part: TimeSpan.new(cycle, cycle + 1),
+          value: %{s: chord},
+          context: %{locations: [], tags: []}
         }
       ]
     end
@@ -165,25 +165,57 @@ defmodule UzuPattern.Pattern.Harmony do
 
   ## Scale format
 
-  Use "Root:type" format (colon separator):
-  - "C:major"
-  - "A:minor"
-  - "Bb:dorian"
+  Use "RootOctave:type" format (colon separator). Octave defaults to 3 if not specified:
+  - "C:major" - C3 major (default octave 3)
+  - "C4:major" - C4 major
+  - "A3:minor" - A3 minor
+  - "Bb4:dorian" - Bb4 dorian
+  - "F#5:minor" - F#5 minor
 
-  ## Example
+  ## Examples
 
       n("0 2 4") |> scale("C:major")
+      # 0 → 48 (C3), 2 → 52 (E3), 4 → 55 (G3)
+
+      n("0 2 4") |> scale("C4:major")
       # 0 → 60 (C4), 2 → 64 (E4), 4 → 67 (G4)
+
+      n("0 2 4") |> scale("C5:major")
+      # 0 → 72 (C5), 2 → 76 (E5), 4 → 79 (G5)
   """
   def scale(pattern, scale_name) when is_binary(scale_name) do
-    # Convert "C:major" to "C major" for Harmony
-    harmony_scale_name = String.replace(scale_name, ":", " ")
+    {harmony_scale_name, octave} = parse_scale_name(scale_name)
 
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(&apply_scale_to_event(&1, harmony_scale_name))
+      |> Enum.map(&apply_scale_to_hap(&1, harmony_scale_name, octave))
     end)
+  end
+
+  # Parse scale name like "C4:major" into {"C major", 4}
+  # Supports: "C:major" (octave 3), "C4:major", "Bb3:dorian", "F#5:minor"
+  defp parse_scale_name(scale_name) do
+    # Split on colon to separate root from scale type
+    case String.split(scale_name, ":", parts: 2) do
+      [root_with_octave, scale_type] ->
+        {root, octave} = parse_root_and_octave(root_with_octave)
+        {"#{root} #{scale_type}", octave}
+
+      [scale_name_no_colon] ->
+        # No colon - might be "C major" format already
+        {scale_name_no_colon, 3}
+    end
+  end
+
+  # Parse root note with optional octave: "C" -> {"C", 3}, "C4" -> {"C", 4}, "Bb3" -> {"Bb", 3}
+  defp parse_root_and_octave(root_str) do
+    # Match: letter, optional accidental (b or #), optional octave number
+    case Regex.run(~r/^([A-Ga-g][b#]?)(\d)?$/, root_str) do
+      [_, root, octave_str] -> {root, String.to_integer(octave_str)}
+      [_, root] -> {root, 3}
+      nil -> {root_str, 3}
+    end
   end
 
   @doc """
@@ -214,7 +246,7 @@ defmodule UzuPattern.Pattern.Harmony do
 
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(&apply_scale_to_event(&1, scale_name))
+      |> Enum.map(&apply_scale_to_hap(&1, scale_name))
     end)
   end
 
@@ -222,22 +254,109 @@ defmodule UzuPattern.Pattern.Harmony do
   def scale(%Pattern{} = pattern), do: pattern
 
   # ============================================================
+  # octave/2 - Octave shifting
+  # ============================================================
+
+  @doc """
+  Shift notes by octaves.
+
+  The octave parameter sets the target octave. Since scale() defaults to octave 3,
+  this shifts notes by `(target_octave - 3) * 12` semitones.
+
+  Can accept a single number or a pattern of octaves for patterned shifting.
+
+  ## Examples
+
+      # Play in octave 4 (one octave up from default)
+      n("0 2 4") |> scale("C:major") |> octave(4)
+      # Notes shift from C3,E3,G3 (48,52,55) to C4,E4,G4 (60,64,67)
+
+      # Pattern the octave
+      n("0 2 4") |> scale("C:major") |> octave("3 4 5")
+      # Each note plays in a different octave
+
+      # Octave pattern cycles
+      n("0") |> scale("C:major") |> octave("<3 4 5>")
+      # Cycles through octaves
+  """
+  def octave(pattern, octave_value) when is_number(octave_value) do
+    shift = (octave_value - 3) * 12
+
+    Pattern.new(fn cycle ->
+      pattern
+      |> Pattern.query(cycle)
+      |> Enum.map(&shift_note_octave(&1, shift))
+    end)
+  end
+
+  def octave(pattern, octave_pattern) when is_binary(octave_pattern) do
+    # Parse octave pattern as mini-notation
+    octave_pat = UzuParser.Grammar.parse(octave_pattern) |> UzuPattern.Interpreter.interpret()
+
+    Pattern.new(fn cycle ->
+      pattern_haps = Pattern.query(pattern, cycle)
+      octave_haps = Pattern.query(octave_pat, cycle)
+
+      # For each pattern hap, find overlapping octave hap and apply shift
+      Enum.map(pattern_haps, fn hap ->
+        # Find octave value at the hap's time
+        octave_val =
+          Enum.find_value(octave_haps, 3, fn oct_hap ->
+            if TimeSpan.intersection(hap.part, oct_hap.part) do
+              parse_octave_value(oct_hap.value)
+            end
+          end)
+
+        shift = (octave_val - 3) * 12
+        shift_note_octave(hap, shift)
+      end)
+    end)
+  end
+
+  defp parse_octave_value(%{s: s}) when is_binary(s), do: parse_number(s) || 3
+  defp parse_octave_value(%{value: v}) when is_number(v), do: v
+  defp parse_octave_value(v) when is_number(v), do: v
+  defp parse_octave_value(_), do: 3
+
+  defp shift_note_octave(hap, shift) do
+    case Map.get(hap.value, :note) do
+      nil -> hap
+      note when is_number(note) -> %{hap | value: Map.put(hap.value, :note, note + shift)}
+      _ -> hap
+    end
+  end
+
+  # ============================================================
   # Private helpers
   # ============================================================
 
-  defp apply_scale_to_event(event, scale_name) do
+  defp apply_scale_to_hap(hap, scale_name, octave \\ 3) do
+    # For Haps, numeric value (degree) could be in:
+    # - hap.value.value (signal patterns)
+    # - hap.value.s parsed as number (explicit degree notation)
+    sound = Map.get(hap.value, :s, "")
+    value = Map.get(hap.value, :value)
+
     degree =
       cond do
-        is_number(event.value) -> event.value
-        is_number(event.sound) -> event.sound
+        is_number(value) -> value
+        is_binary(sound) -> parse_number(sound)
+        is_number(sound) -> sound
         true -> nil
       end
 
     if degree do
-      midi = Harmony.Scale.degree_to_midi(scale_name, degree)
-      %{event | params: Map.put(event.params, :note, midi)}
+      midi = Harmony.Scale.degree_to_midi(scale_name, degree, octave)
+      %{hap | value: Map.put(hap.value, :note, midi)}
     else
-      event
+      hap
+    end
+  end
+
+  defp parse_number(str) do
+    case Integer.parse(str) do
+      {n, ""} -> n
+      _ -> nil
     end
   end
 end

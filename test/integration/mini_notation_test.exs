@@ -4,14 +4,22 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   Covers: whitespace handling, sound names, bracket nesting, modifiers,
   rests, polyphony, alternation, elongation, euclidean syntax, parameters.
+
+  Follows Strudel test conventions - focus on behavior (values, timing).
   """
 
   use ExUnit.Case, async: true
 
+  alias UzuPattern.Hap
   alias UzuPattern.Pattern
 
   defp parse(str), do: UzuPattern.parse(str)
   defp parse_events(str), do: Pattern.query(parse(str), 0)
+
+  # Strudel-style helpers
+  defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
+  defp times(haps), do: Enum.map(haps, & &1.part.begin)
+  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
 
   # ============================================================================
   # Whitespace Handling
@@ -19,33 +27,33 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "whitespace handling" do
     test "leading whitespace is ignored" do
-      events = parse_events("   bd sd")
-      assert length(events) == 2
+      haps = parse_events("   bd sd")
+      assert length(haps) == 2
     end
 
     test "trailing whitespace is ignored" do
-      events = parse_events("bd sd   ")
-      assert length(events) == 2
+      haps = parse_events("bd sd   ")
+      assert length(haps) == 2
     end
 
     test "multiple spaces between elements" do
-      events = parse_events("bd    sd    hh")
-      assert length(events) == 3
+      haps = parse_events("bd    sd    hh")
+      assert length(haps) == 3
     end
 
     test "tabs are treated as whitespace" do
-      events = parse_events("bd\tsd\thh")
-      assert length(events) == 3
+      haps = parse_events("bd\tsd\thh")
+      assert length(haps) == 3
     end
 
     test "newlines in pattern" do
-      events = parse_events("bd\nsd\nhh")
-      assert length(events) == 3
+      haps = parse_events("bd\nsd\nhh")
+      assert length(haps) == 3
     end
 
     test "mixed whitespace" do
-      events = parse_events("bd \t\n sd")
-      assert length(events) == 2
+      haps = parse_events("bd \t\n sd")
+      assert length(haps) == 2
     end
   end
 
@@ -55,24 +63,23 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "sound names" do
     test "single character sounds" do
-      events = parse_events("a b c")
-      assert Enum.map(events, & &1.sound) == ["a", "b", "c"]
+      haps = parse_events("a b c")
+      assert sounds(haps) == ["a", "b", "c"]
     end
 
     test "numeric sounds" do
-      events = parse_events("808 909 303")
-      assert Enum.map(events, & &1.sound) == ["808", "909", "303"]
+      haps = parse_events("808 909 303")
+      assert sounds(haps) == ["808", "909", "303"]
     end
 
     test "mixed alphanumeric" do
-      events = parse_events("bd2 sd1 hh808")
-      assert Enum.map(events, & &1.sound) == ["bd2", "sd1", "hh808"]
+      haps = parse_events("bd2 sd1 hh808")
+      assert sounds(haps) == ["bd2", "sd1", "hh808"]
     end
 
     test "underscores in sound names" do
-      events = parse_events("kick_drum snare_hit")
-      sounds = Enum.map(events, & &1.sound)
-      assert sounds == ["kick_drum", "snare_hit"]
+      haps = parse_events("kick_drum snare_hit")
+      assert sounds(haps) == ["kick_drum", "snare_hit"]
     end
   end
 
@@ -82,30 +89,30 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "bracket nesting" do
     test "single element in brackets" do
-      events = parse_events("[bd]")
-      assert length(events) == 1
-      assert hd(events).sound == "bd"
+      haps = parse_events("[bd]")
+      assert length(haps) == 1
+      assert Hap.sound(hd(haps)) == "bd"
     end
 
     test "triple nested brackets" do
-      events = parse_events("[[[bd]]]")
-      assert length(events) == 1
-      assert hd(events).sound == "bd"
+      haps = parse_events("[[[bd]]]")
+      assert length(haps) == 1
+      assert Hap.sound(hd(haps)) == "bd"
     end
 
     test "mixed nesting depths" do
-      events = parse_events("bd [sd [hh cp]] tom")
-      assert length(events) == 5
+      haps = parse_events("bd [sd [hh cp]] tom")
+      assert length(haps) == 5
     end
 
     test "adjacent bracket groups" do
-      events = parse_events("[bd sd][hh cp]")
-      assert length(events) == 4
+      haps = parse_events("[bd sd][hh cp]")
+      assert length(haps) == 4
     end
 
     test "adjacent bracket groups with space" do
-      events = parse_events("[bd sd] [hh cp]")
-      assert length(events) == 4
+      haps = parse_events("[bd sd] [hh cp]")
+      assert length(haps) == 4
     end
   end
 
@@ -115,48 +122,49 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "modifiers" do
     test "sample and repeat" do
-      events = parse_events("bd:2*4")
-      assert length(events) == 4
-      assert Enum.all?(events, fn e -> e.sample == 2 end)
+      haps = parse_events("bd:2*4")
+      assert length(haps) == 4
+      assert Enum.all?(haps, &(Hap.sample(&1) == 2))
     end
 
     test "repeat on subdivision" do
-      events = parse_events("[bd sd]*2")
-      assert length(events) == 4
-      sounds = Enum.map(events, & &1.sound)
-      assert sounds == ["bd", "sd", "bd", "sd"]
+      haps = parse_events("[bd sd]*2")
+      assert length(haps) == 4
+      assert sounds(haps) == ["bd", "sd", "bd", "sd"]
     end
 
     test "division on subdivision" do
       pattern = parse("[bd sd hh cp]/2")
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      assert length(events_0) == 2
-      assert length(events_1) == 2
+      assert length(haps_0) == 2
+      assert length(haps_1) == 2
     end
 
     test "weight with multiple elements" do
-      events = parse_events("bd@3 sd")
-      assert length(events) == 2
+      haps = parse_events("bd@3 sd")
+      assert length(haps) == 2
 
-      bd = Enum.find(events, &(&1.sound == "bd"))
-      sd = Enum.find(events, &(&1.sound == "sd"))
+      bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
+      sd = Enum.find(haps, &(Hap.sound(&1) == "sd"))
 
-      assert_in_delta bd.duration, 0.75, 0.01
-      assert_in_delta sd.duration, 0.25, 0.01
+      bd_dur = bd.part.end - bd.part.begin
+      sd_dur = sd.part.end - sd.part.begin
+      assert_in_delta bd_dur, 0.75, 0.01
+      assert_in_delta sd_dur, 0.25, 0.01
     end
 
     test "probability on multiple elements" do
-      events = parse_events("bd? sd? hh?")
-      assert length(events) == 3
-      assert Enum.all?(events, fn e -> e.params[:probability] == 0.5 end)
+      haps = parse_events("bd? sd? hh?")
+      assert length(haps) == 3
+      assert Enum.all?(haps, &(&1.value[:probability] == 0.5))
     end
 
     test "custom probability values" do
-      events = parse_events("bd?0.25 sd?0.75")
-      assert Enum.at(events, 0).params[:probability] == 0.25
-      assert Enum.at(events, 1).params[:probability] == 0.75
+      haps = parse_events("bd?0.25 sd?0.75")
+      assert Enum.at(haps, 0).value[:probability] == 0.25
+      assert Enum.at(haps, 1).value[:probability] == 0.75
     end
   end
 
@@ -166,30 +174,29 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "rests" do
     test "single rest" do
-      events = parse_events("~")
-      assert events == []
+      haps = parse_events("~")
+      assert haps == []
     end
 
     test "rest in sequence" do
-      events = parse_events("bd ~ sd")
-      assert length(events) == 2
-      sounds = Enum.map(events, & &1.sound)
-      assert sounds == ["bd", "sd"]
+      haps = parse_events("bd ~ sd")
+      assert length(haps) == 2
+      assert sounds(haps) == ["bd", "sd"]
     end
 
     test "multiple consecutive rests" do
-      events = parse_events("bd ~ ~ ~ sd")
-      assert length(events) == 2
+      haps = parse_events("bd ~ ~ ~ sd")
+      assert length(haps) == 2
     end
 
     test "rest in subdivision" do
-      events = parse_events("[bd ~ sd ~]")
-      assert length(events) == 2
+      haps = parse_events("[bd ~ sd ~]")
+      assert length(haps) == 2
     end
 
     test "all rests" do
-      events = parse_events("~ ~ ~ ~")
-      assert events == []
+      haps = parse_events("~ ~ ~ ~")
+      assert haps == []
     end
   end
 
@@ -199,30 +206,30 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "polyphony" do
     test "two-element chord" do
-      events = parse_events("[bd,sd]")
-      assert length(events) == 2
-      assert Enum.all?(events, fn e -> e.time == 0.0 end)
+      haps = parse_events("[bd,sd]")
+      assert length(haps) == 2
+      assert Enum.all?(times(haps), &(&1 == 0.0))
     end
 
     test "three-element chord" do
-      events = parse_events("[c3,e3,g3]")
-      assert length(events) == 3
-      assert Enum.all?(events, fn e -> e.time == 0.0 end)
+      haps = parse_events("[c3,e3,g3]")
+      assert length(haps) == 3
+      assert Enum.all?(times(haps), &(&1 == 0.0))
     end
 
     test "chord with rest" do
-      events = parse_events("[bd,~,sd]")
-      assert length(events) == 2
+      haps = parse_events("[bd,~,sd]")
+      assert length(haps) == 2
     end
 
     test "chord in sequence" do
-      events = parse_events("hh [bd,sd] hh")
-      assert length(events) == 4
+      haps = parse_events("hh [bd,sd] hh")
+      assert length(haps) == 4
     end
 
     test "nested chord" do
-      events = parse_events("[[bd,sd],hh]")
-      assert length(events) == 3
+      haps = parse_events("[[bd,sd],hh]")
+      assert length(haps) == 3
     end
   end
 
@@ -234,50 +241,50 @@ defmodule UzuPattern.Integration.MiniNotationTest do
     test "two-element alternation" do
       pattern = parse("<bd sd>")
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      assert hd(events_0).sound == "bd"
-      assert hd(events_1).sound == "sd"
+      assert Hap.sound(hd(haps_0)) == "bd"
+      assert Hap.sound(hd(haps_1)) == "sd"
     end
 
     test "single-element alternation" do
       pattern = parse("<bd>")
-      events = Pattern.query(pattern, 0)
-      assert length(events) == 1
-      assert hd(events).sound == "bd"
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 1
+      assert Hap.sound(hd(haps)) == "bd"
     end
 
     test "alternation with rests" do
       pattern = parse("<bd ~ sd>")
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
-      events_2 = Pattern.query(pattern, 2)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+      haps_2 = Pattern.query(pattern, 2)
 
-      assert hd(events_0).sound == "bd"
-      assert events_1 == []
-      assert hd(events_2).sound == "sd"
+      assert Hap.sound(hd(haps_0)) == "bd"
+      assert haps_1 == []
+      assert Hap.sound(hd(haps_2)) == "sd"
     end
 
     test "nested alternation" do
       pattern = parse("<<a b> c>")
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      assert hd(events_0).sound == "a"
-      assert hd(events_1).sound == "c"
+      assert Hap.sound(hd(haps_0)) == "a"
+      assert Hap.sound(hd(haps_1)) == "c"
     end
 
     test "alternation in sequence" do
       pattern = parse("bd <sd hh> cp")
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      sounds_0 = Enum.map(events_0, & &1.sound)
-      sounds_1 = Enum.map(events_1, & &1.sound)
+      sounds_0 = sounds(haps_0)
+      sounds_1 = sounds(haps_1)
 
       assert "sd" in sounds_0
       assert "hh" in sounds_1
@@ -290,35 +297,37 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "elongation" do
     test "single elongation" do
-      events = parse_events("bd _ sd")
-      assert length(events) == 2
+      haps = parse_events("bd _ sd")
+      assert length(haps) == 2
 
-      bd = Enum.find(events, &(&1.sound == "bd"))
-      assert_in_delta bd.duration, 0.666, 0.01
+      bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
+      bd_dur = bd.part.end - bd.part.begin
+      assert_in_delta bd_dur, 0.666, 0.01
     end
 
     test "multiple elongations" do
-      events = parse_events("bd _ _ _ sd")
-      assert length(events) == 2
+      haps = parse_events("bd _ _ _ sd")
+      assert length(haps) == 2
 
-      bd = Enum.find(events, &(&1.sound == "bd"))
-      assert_in_delta bd.duration, 0.8, 0.01
+      bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
+      bd_dur = bd.part.end - bd.part.begin
+      assert_in_delta bd_dur, 0.8, 0.01
     end
 
     test "elongation at start has no effect" do
-      events = parse_events("_ bd sd")
-      assert length(events) == 2
+      haps = parse_events("_ bd sd")
+      assert length(haps) == 2
     end
 
     test "consecutive elements with elongations" do
-      events = parse_events("bd _ sd _")
-      assert length(events) == 2
+      haps = parse_events("bd _ sd _")
+      assert length(haps) == 2
 
-      bd = Enum.find(events, &(&1.sound == "bd"))
-      sd = Enum.find(events, &(&1.sound == "sd"))
+      bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
+      sd = Enum.find(haps, &(Hap.sound(&1) == "sd"))
 
-      assert_in_delta bd.duration, 0.5, 0.01
-      assert_in_delta sd.duration, 0.5, 0.01
+      assert_in_delta bd.part.end - bd.part.begin, 0.5, 0.01
+      assert_in_delta sd.part.end - sd.part.begin, 0.5, 0.01
     end
   end
 
@@ -328,29 +337,29 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "euclidean syntax" do
     test "basic euclidean" do
-      events = parse_events("bd(3,8)")
-      assert length(events) == 3
+      haps = parse_events("bd(3,8)")
+      assert length(haps) == 3
     end
 
     test "euclidean with offset" do
-      events1 = parse_events("bd(3,8,0)")
-      events2 = parse_events("bd(3,8,1)")
+      haps1 = parse_events("bd(3,8,0)")
+      haps2 = parse_events("bd(3,8,1)")
 
-      times1 = Enum.map(events1, & &1.time)
-      times2 = Enum.map(events2, & &1.time)
+      times1 = times(haps1)
+      times2 = times(haps2)
 
       assert times1 != times2
     end
 
     test "euclidean in sequence" do
-      events = parse_events("hh bd(3,8) hh")
-      assert length(events) == 5
+      haps = parse_events("hh bd(3,8) hh")
+      assert length(haps) == 5
     end
 
     test "euclidean with sample" do
-      events = parse_events("bd:2(3,8)")
-      assert length(events) == 3
-      assert Enum.all?(events, fn e -> e.sample == 2 end)
+      haps = parse_events("bd:2(3,8)")
+      assert length(haps) == 3
+      assert Enum.all?(haps, &(Hap.sample(&1) == 2))
     end
   end
 
@@ -360,31 +369,31 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "parameter syntax" do
     test "single parameter" do
-      events = parse_events("bd|gain:0.5")
-      assert length(events) == 1
-      assert hd(events).params[:gain] == 0.5
+      haps = parse_events("bd|gain:0.5")
+      assert length(haps) == 1
+      assert hd(haps).value[:gain] == 0.5
     end
 
     test "multiple parameters" do
-      events = parse_events("bd|gain:0.5|speed:2")
-      [event] = events
-      assert event.params[:gain] == 0.5
-      assert event.params[:speed] == 2.0
+      haps = parse_events("bd|gain:0.5|speed:2")
+      [hap] = haps
+      assert hap.value[:gain] == 0.5
+      assert hap.value[:speed] == 2.0
     end
 
     test "parameter on subdivision" do
-      events = parse_events("[bd sd]|gain:0.5")
-      assert Enum.all?(events, fn e -> e.params[:gain] == 0.5 end)
+      haps = parse_events("[bd sd]|gain:0.5")
+      assert Enum.all?(haps, &(&1.value[:gain] == 0.5))
     end
 
     test "integer parameter values" do
-      events = parse_events("bd|cut:1")
-      assert hd(events).params[:cut] == 1
+      haps = parse_events("bd|cut:1")
+      assert hd(haps).value[:cut] == 1
     end
 
     test "negative parameter values" do
-      events = parse_events("bd|pan:-0.5")
-      assert hd(events).params[:pan] == -0.5
+      haps = parse_events("bd|pan:-0.5")
+      assert hd(haps).value[:pan] == -0.5
     end
   end
 
@@ -394,13 +403,13 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "period separator" do
     test "period creates subdivision" do
-      events = parse_events("bd . sd hh")
-      assert length(events) == 3
+      haps = parse_events("bd . sd hh")
+      assert length(haps) == 3
     end
 
     test "multiple periods" do
-      events = parse_events("bd . sd . hh cp")
-      assert length(events) == 4
+      haps = parse_events("bd . sd . hh cp")
+      assert length(haps) == 4
     end
   end
 
@@ -410,28 +419,28 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   describe "complex realistic patterns" do
     test "drum pattern with subdivision" do
-      events = parse_events("bd [hh hh] sd [hh hh]")
-      assert length(events) == 6
+      haps = parse_events("bd [hh hh] sd [hh hh]")
+      assert length(haps) == 6
     end
 
     test "pattern with all features" do
       pattern = parse("[bd:1 sd]*2 <hh cp>")
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      assert length(events_0) == 5
-      assert length(events_1) == 5
+      assert length(haps_0) == 5
+      assert length(haps_1) == 5
     end
 
     test "layered drum pattern" do
-      events = parse_events("[bd, hh hh hh hh] [sd, hh hh hh hh]")
-      assert length(events) == 10
+      haps = parse_events("[bd, hh hh hh hh] [sd, hh hh hh hh]")
+      assert length(haps) == 10
     end
 
     test "polyrhythm" do
-      events = parse_events("{bd bd bd, hh hh hh hh hh}")
-      assert length(events) == 8
+      haps = parse_events("{bd bd bd, hh hh hh hh hh}")
+      assert length(haps) == 8
     end
   end
 
@@ -441,7 +450,7 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   @tag :skip
   test "empty brackets" do
-    events = parse_events("bd [] sd")
-    assert length(events) >= 2
+    haps = parse_events("bd [] sd")
+    assert length(haps) >= 2
   end
 end

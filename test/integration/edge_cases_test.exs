@@ -4,13 +4,21 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
 
   Covers: time boundaries, floating point precision, empty patterns,
   deterministic randomness, complex nesting, and unusual scenarios.
+
+  Follows Strudel test conventions - focus on behavior (values, timing).
   """
 
   use ExUnit.Case, async: true
 
+  alias UzuPattern.Hap
   alias UzuPattern.Pattern
 
   defp parse(str), do: UzuPattern.parse(str)
+
+  # Strudel-style helpers
+  defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
+  defp times(haps), do: Enum.map(haps, & &1.part.begin)
+  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
 
   # ============================================================================
   # Time Boundaries
@@ -19,15 +27,15 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
   describe "time boundaries" do
     test "events at exactly 0.0 are included" do
       pattern = parse("bd")
-      [event] = Pattern.query(pattern, 0)
-      assert event.time == 0.0
+      [hap] = Pattern.query(pattern, 0)
+      assert hap.part.begin == 0.0
     end
 
     test "all times within cycle bounds [0, 1)" do
-      events = parse("bd sd hh cp oh rim") |> Pattern.events()
+      haps = parse("bd sd hh cp oh rim") |> Pattern.events()
 
-      Enum.each(events, fn event ->
-        assert event.time >= 0.0 and event.time < 1.0
+      Enum.each(haps, fn hap ->
+        assert hap.part.begin >= 0.0 and hap.part.begin < 1.0
       end)
     end
   end
@@ -43,19 +51,19 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
         |> Pattern.fast(3)
         |> Pattern.slow(3)
 
-      events = Pattern.query(pattern, 0)
-      times = Enum.map(events, & &1.time)
+      haps = Pattern.query(pattern, 0)
+      hap_times = times(haps)
 
-      assert_in_delta Enum.at(times, 0), 0.0, 0.001
-      assert_in_delta Enum.at(times, 1), 0.25, 0.001
-      assert_in_delta Enum.at(times, 2), 0.5, 0.001
-      assert_in_delta Enum.at(times, 3), 0.75, 0.001
+      assert_in_delta Enum.at(hap_times, 0), 0.0, 0.001
+      assert_in_delta Enum.at(hap_times, 1), 0.25, 0.001
+      assert_in_delta Enum.at(hap_times, 2), 0.5, 0.001
+      assert_in_delta Enum.at(hap_times, 3), 0.75, 0.001
     end
 
     test "durations sum to approximately 1.0" do
       pattern = parse("bd sd hh cp")
-      events = Pattern.query(pattern, 0)
-      total_duration = Enum.reduce(events, 0.0, fn e, acc -> acc + e.duration end)
+      haps = Pattern.query(pattern, 0)
+      total_duration = Enum.reduce(durations(haps), 0.0, &(&1 + &2))
       assert_in_delta total_duration, 1.0, 0.001
     end
   end
@@ -67,9 +75,9 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
   describe "empty and minimal patterns" do
     test "single event pattern" do
       pattern = Pattern.pure("bd")
-      events = Pattern.query(pattern, 0)
-      assert length(events) == 1
-      assert hd(events).sound == "bd"
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 1
+      assert Hap.sound(hd(haps)) == "bd"
     end
   end
 
@@ -81,10 +89,10 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
     test "degrade_by produces same results for same cycle" do
       pattern = parse("bd sd hh cp") |> Pattern.degrade_by(0.5)
 
-      events_first = Pattern.query(pattern, 0)
-      events_second = Pattern.query(pattern, 0)
+      haps_first = Pattern.query(pattern, 0)
+      haps_second = Pattern.query(pattern, 0)
 
-      assert events_first == events_second
+      assert haps_first == haps_second
     end
 
     test "degrade_by produces different results for different cycles" do
@@ -109,8 +117,8 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
       middle = Pattern.slowcat([inner, Pattern.pure("c")])
       outer = Pattern.slowcat([middle, Pattern.pure("d")])
 
-      assert hd(Pattern.query(outer, 0)).sound == "a"
-      assert hd(Pattern.query(outer, 1)).sound == "d"
+      assert Hap.sound(hd(Pattern.query(outer, 0))) == "a"
+      assert Hap.sound(hd(Pattern.query(outer, 1))) == "d"
     end
 
     test "stack of stacks" do
@@ -118,9 +126,8 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
       inner2 = Pattern.stack([Pattern.pure("c"), Pattern.pure("d")])
       outer = Pattern.stack([inner1, inner2])
 
-      events = Pattern.query(outer, 0)
-      sounds = Enum.map(events, & &1.sound) |> Enum.sort()
-      assert sounds == ["a", "b", "c", "d"]
+      haps = Pattern.query(outer, 0)
+      assert sounds(haps) |> Enum.sort() == ["a", "b", "c", "d"]
     end
   end
 
@@ -134,19 +141,19 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
         Pattern.stack([parse("bd"), parse("hh")])
         |> Pattern.every(2, &Pattern.fast(&1, 2))
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      assert length(events_0) > length(events_1)
+      assert length(haps_0) > length(haps_1)
     end
 
     test "jux with rev" do
       pattern = parse("bd sd hh") |> Pattern.jux(&Pattern.rev/1)
-      events = Pattern.query(pattern, 0)
+      haps = Pattern.query(pattern, 0)
 
-      assert length(events) == 6
+      assert length(haps) == 6
 
-      pans = Enum.map(events, fn e -> e.params[:pan] end)
+      pans = Enum.map(haps, & &1.value[:pan])
       assert -1.0 in pans
       assert 1.0 in pans
     end

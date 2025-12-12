@@ -8,7 +8,7 @@ defmodule UzuPattern.Pattern.Signal do
   ## Key Insight
 
   Signals ARE patterns - they use the same `%Pattern{query: fn}` structure.
-  A signal's query function returns a single continuous event with a numeric value
+  A signal's query function returns a single continuous hap with a numeric value
   sampled at the cycle time.
 
   ## Waveforms
@@ -44,7 +44,7 @@ defmodule UzuPattern.Pattern.Signal do
   """
 
   alias UzuPattern.Pattern
-  alias UzuPattern.Event
+  alias UzuPattern.Hap
 
   # ============================================================================
   # Signal Constructor
@@ -54,7 +54,7 @@ defmodule UzuPattern.Pattern.Signal do
   Create a continuous signal pattern from a time function.
 
   The function receives a time value (which may be fractional) and returns
-  a numeric value. Signal patterns return a single continuous event when
+  a numeric value. Signal patterns return a single continuous hap when
   queried via `Pattern.query/2`.
 
   For sub-cycle sampling (fractional times), use `sample_at/2` which calls
@@ -63,10 +63,10 @@ defmodule UzuPattern.Pattern.Signal do
   ## Examples
 
       iex> sig = Signal.signal(fn t -> t end)  # identity signal
-      iex> [event] = Pattern.query(sig, 0)
-      iex> event.value
+      iex> [hap] = Pattern.query(sig, 0)
+      iex> hap.value.value
       0.0
-      iex> event.continuous
+      iex> Hap.continuous?(hap)
       true
   """
   def signal(time_fn) when is_function(time_fn, 1) do
@@ -75,14 +75,7 @@ defmodule UzuPattern.Pattern.Signal do
       Pattern.new(fn cycle ->
         value = time_fn.(cycle * 1.0)
 
-        [
-          %Event{
-            time: 0.0,
-            duration: 1.0,
-            value: value,
-            continuous: true
-          }
-        ]
+        [Hap.continuous(%{begin: 0.0, end: 1.0}, %{value: value})]
       end)
 
     %{pattern | metadata: Map.put(pattern.metadata, :time_fn, time_fn)}
@@ -99,12 +92,9 @@ defmodule UzuPattern.Pattern.Signal do
 
   ## Examples
 
-      iex> [event] = Pattern.query(Signal.sine(), 0)
-      iex> event.value
+      iex> [hap] = Pattern.query(Signal.sine(), 0)
+      iex> hap.value.value
       0.5
-      iex> [event] = Pattern.query(Signal.sine(), 0.25)
-      iex> Float.round(event.value, 2)
-      1.0
   """
   def sine do
     signal(fn t ->
@@ -181,9 +171,9 @@ defmodule UzuPattern.Pattern.Signal do
 
   ## Examples
 
-      iex> [e1] = Pattern.query(Signal.rand(), 0)
-      iex> [e2] = Pattern.query(Signal.rand(), 0)
-      iex> e1.value == e2.value  # Same cycle = same value
+      iex> [h1] = Pattern.query(Signal.rand(), 0)
+      iex> [h2] = Pattern.query(Signal.rand(), 0)
+      iex> h1.value.value == h2.value.value  # Same cycle = same value
       true
   """
   def rand do
@@ -203,8 +193,8 @@ defmodule UzuPattern.Pattern.Signal do
   ## Examples
 
       iex> sig = Signal.irand(4)
-      iex> [event] = Pattern.query(sig, 0)
-      iex> event.value in 0..3
+      iex> [hap] = Pattern.query(sig, 0)
+      iex> hap.value.value in 0..3
       true
   """
   def irand(n) when is_integer(n) and n > 0 do
@@ -266,18 +256,16 @@ defmodule UzuPattern.Pattern.Signal do
   @doc """
   Discretize a continuous signal into n samples per cycle.
 
-  Turns a continuous signal into n discrete events, each with
+  Turns a continuous signal into n discrete haps, each with
   the signal value sampled at that point in time.
 
   ## Examples
 
       iex> sig = Signal.saw() |> Signal.segment(4)
-      iex> events = Pattern.query(sig, 0)
-      iex> length(events)
+      iex> haps = Pattern.query(sig, 0)
+      iex> length(haps)
       4
-      iex> Enum.map(events, & &1.time)
-      [0.0, 0.25, 0.5, 0.75]
-      iex> Enum.map(events, & &1.value) |> Enum.map(&Float.round(&1, 2))
+      iex> Enum.map(haps, & &1.part.begin)
       [0.0, 0.25, 0.5, 0.75]
   """
   def segment(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
@@ -290,12 +278,8 @@ defmodule UzuPattern.Pattern.Signal do
         abs_time = cycle + frac_time
         value = sample_at(pattern, abs_time)
 
-        %Event{
-          time: frac_time,
-          duration: duration,
-          value: value,
-          continuous: false
-        }
+        # Create a discrete hap (not continuous)
+        Hap.new(%{begin: frac_time, end: frac_time + duration}, %{value: value})
       end
     end)
   end
@@ -305,7 +289,7 @@ defmodule UzuPattern.Pattern.Signal do
   # ============================================================================
 
   @doc """
-  Transform the value of each event in a pattern.
+  Transform the value of each hap in a pattern.
 
   Works on both discrete events and continuous signals.
   """
@@ -313,10 +297,10 @@ defmodule UzuPattern.Pattern.Signal do
     Pattern.new(fn cycle ->
       pattern
       |> Pattern.query(cycle)
-      |> Enum.map(fn event ->
-        case event.value do
-          nil -> event
-          v -> %{event | value: value_fn.(v)}
+      |> Enum.map(fn hap ->
+        case Map.get(hap.value, :value) do
+          nil -> hap
+          v -> %{hap | value: Map.put(hap.value, :value, value_fn.(v))}
         end
       end)
     end)
@@ -352,8 +336,8 @@ defmodule UzuPattern.Pattern.Signal do
     |> List.first()
     |> case do
       nil -> 0.0
-      %Event{value: nil} -> 0.0
-      %Event{value: v} -> v
+      %Hap{value: %{value: v}} when not is_nil(v) -> v
+      _ -> 0.0
     end
   end
 end

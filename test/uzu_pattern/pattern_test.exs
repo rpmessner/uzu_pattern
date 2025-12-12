@@ -8,8 +8,14 @@ defmodule UzuPattern.PatternTest do
   use ExUnit.Case, async: true
 
   alias UzuPattern.Pattern
+  alias UzuPattern.Hap
 
   defp parse(str), do: UzuPattern.parse(str)
+
+  # Helper to get sound from hap
+  defp sound(hap), do: hap.value.s
+  defp time(hap), do: hap.part.begin
+  defp duration(hap), do: hap.part.end - hap.part.begin
 
   # ============================================================================
   # Constructors
@@ -17,53 +23,53 @@ defmodule UzuPattern.PatternTest do
 
   describe "new/1 with query function" do
     test "creates pattern from query function" do
-      pattern = Pattern.new(fn _cycle -> [%UzuPattern.Event{sound: "bd", time: 0.0, duration: 1.0}] end)
-      events = Pattern.events(pattern)
+      pattern = Pattern.new(fn _cycle -> [Hap.new(%{begin: 0.0, end: 1.0}, %{s: "bd"})] end)
+      haps = Pattern.events(pattern)
 
-      assert length(events) == 1
-      assert hd(events).sound == "bd"
+      assert length(haps) == 1
+      assert sound(hd(haps)) == "bd"
     end
   end
 
   describe "new/1 with string" do
     test "creates pattern from mini-notation string" do
       pattern = Pattern.new("bd sd hh cp")
-      events = Pattern.events(pattern)
+      haps = Pattern.events(pattern)
 
-      assert length(events) == 4
+      assert length(haps) == 4
     end
 
     test "creates empty pattern from empty string" do
       pattern = parse("")
-      events = Pattern.events(pattern)
+      haps = Pattern.events(pattern)
 
-      assert events == []
+      assert haps == []
     end
   end
 
   describe "pure/1" do
-    test "creates single event pattern" do
+    test "creates single hap pattern" do
       pattern = Pattern.pure("bd")
-      events = Pattern.events(pattern)
+      haps = Pattern.events(pattern)
 
-      assert length(events) == 1
-      assert hd(events).sound == "bd"
-      assert hd(events).time == 0.0
-      assert hd(events).duration == 1.0
+      assert length(haps) == 1
+      assert sound(hd(haps)) == "bd"
+      assert time(hd(haps)) == 0.0
+      assert duration(hd(haps)) == 1.0
     end
 
     test "accepts sample option" do
       pattern = Pattern.pure("bd", sample: 2)
-      events = Pattern.events(pattern)
+      haps = Pattern.events(pattern)
 
-      assert hd(events).sample == 2
+      assert hd(haps).value.n == 2
     end
 
     test "accepts params option" do
       pattern = Pattern.pure("bd", params: %{gain: 0.5})
-      events = Pattern.events(pattern)
+      haps = Pattern.events(pattern)
 
-      assert hd(events).params[:gain] == 0.5
+      assert hd(haps).value[:gain] == 0.5
     end
   end
 
@@ -76,10 +82,10 @@ defmodule UzuPattern.PatternTest do
     end
   end
 
-  describe "from_events/1" do
-    test "creates pattern from event list" do
-      events = UzuPattern.query(parse("bd sd"), 0)
-      pattern = Pattern.from_events(events)
+  describe "from_haps/1" do
+    test "creates pattern from hap list" do
+      haps = UzuPattern.query(parse("bd sd"), 0)
+      pattern = Pattern.from_haps(haps)
       result = Pattern.events(pattern)
 
       assert length(result) == 2
@@ -96,13 +102,13 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("sd")
       combined = Pattern.slowcat([p1, p2])
 
-      events_0 = Pattern.query(combined, 0)
-      assert length(events_0) == 1
-      assert hd(events_0).sound == "bd"
+      haps_0 = Pattern.query(combined, 0)
+      assert length(haps_0) == 1
+      assert sound(hd(haps_0)) == "bd"
 
-      events_1 = Pattern.query(combined, 1)
-      assert length(events_1) == 1
-      assert hd(events_1).sound == "sd"
+      haps_1 = Pattern.query(combined, 1)
+      assert length(haps_1) == 1
+      assert sound(hd(haps_1)) == "sd"
     end
 
     test "wraps around after all patterns" do
@@ -110,8 +116,8 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("sd")
       combined = Pattern.cat([p1, p2])
 
-      events_2 = Pattern.query(combined, 2)
-      assert hd(events_2).sound == "bd"
+      haps_2 = Pattern.query(combined, 2)
+      assert sound(hd(haps_2)) == "bd"
     end
 
     test "cycles correctly at high numbers" do
@@ -122,19 +128,19 @@ defmodule UzuPattern.PatternTest do
           Pattern.pure("c")
         ])
 
-      assert hd(Pattern.query(pattern, 0)).sound == "a"
-      assert hd(Pattern.query(pattern, 1)).sound == "b"
-      assert hd(Pattern.query(pattern, 2)).sound == "c"
-      assert hd(Pattern.query(pattern, 3)).sound == "a"
-      assert hd(Pattern.query(pattern, 99)).sound == "a"
-      assert hd(Pattern.query(pattern, 100)).sound == "b"
-      assert hd(Pattern.query(pattern, 101)).sound == "c"
+      assert sound(hd(Pattern.query(pattern, 0))) == "a"
+      assert sound(hd(Pattern.query(pattern, 1))) == "b"
+      assert sound(hd(Pattern.query(pattern, 2))) == "c"
+      assert sound(hd(Pattern.query(pattern, 3))) == "a"
+      assert sound(hd(Pattern.query(pattern, 99))) == "a"
+      assert sound(hd(Pattern.query(pattern, 100))) == "b"
+      assert sound(hd(Pattern.query(pattern, 101))) == "c"
     end
 
     test "slowcat with single pattern" do
       pattern = Pattern.slowcat([Pattern.pure("bd")])
-      events = Pattern.query(pattern, 0)
-      assert length(events) == 1
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 1
     end
 
     test "deeply nested slowcat" do
@@ -142,8 +148,8 @@ defmodule UzuPattern.PatternTest do
       middle = Pattern.slowcat([inner, Pattern.pure("c")])
       outer = Pattern.slowcat([middle, Pattern.pure("d")])
 
-      assert hd(Pattern.query(outer, 0)).sound == "a"
-      assert hd(Pattern.query(outer, 1)).sound == "d"
+      assert sound(hd(Pattern.query(outer, 0))) == "a"
+      assert sound(hd(Pattern.query(outer, 1))) == "d"
     end
   end
 
@@ -153,11 +159,11 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("sd")
       combined = Pattern.cat([p1, p2])
 
-      events_0 = Pattern.query(combined, 0)
-      events_1 = Pattern.query(combined, 1)
+      haps_0 = Pattern.query(combined, 0)
+      haps_1 = Pattern.query(combined, 1)
 
-      assert hd(events_0).sound == "bd"
-      assert hd(events_1).sound == "sd"
+      assert sound(hd(haps_0)) == "bd"
+      assert sound(hd(haps_1)) == "sd"
     end
   end
 
@@ -167,10 +173,10 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("sd")
       combined = Pattern.fastcat([p1, p2])
 
-      events = Pattern.events(combined)
-      assert length(events) == 2
-      assert Enum.at(events, 0).time == 0.0
-      assert Enum.at(events, 1).time == 0.5
+      haps = Pattern.events(combined)
+      assert length(haps) == 2
+      assert time(Enum.at(haps, 0)) == 0.0
+      assert time(Enum.at(haps, 1)) == 0.5
     end
 
     test "scales durations correctly" do
@@ -178,14 +184,14 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("hh")
       combined = Pattern.fastcat([p1, p2])
 
-      events = Pattern.events(combined)
-      assert Enum.at(events, 0).duration == 0.25
+      haps = Pattern.events(combined)
+      assert duration(Enum.at(haps, 0)) == 0.25
     end
 
     test "fastcat with single pattern" do
       pattern = Pattern.fastcat([Pattern.pure("bd")])
-      events = Pattern.query(pattern, 0)
-      assert length(events) == 1
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 1
     end
   end
 
@@ -195,8 +201,8 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("sd")
       combined = Pattern.sequence([p1, p2])
 
-      events = Pattern.events(combined)
-      assert length(events) == 2
+      haps = Pattern.events(combined)
+      assert length(haps) == 2
     end
   end
 
@@ -206,15 +212,15 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("hh cp")
       pattern = Pattern.append(p1, p2)
 
-      events_0 = Pattern.query(pattern, 0)
-      events_1 = Pattern.query(pattern, 1)
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
 
-      assert length(events_0) == 2
-      sounds_0 = Enum.map(events_0, & &1.sound)
+      assert length(haps_0) == 2
+      sounds_0 = Enum.map(haps_0, &sound/1)
       assert "bd" in sounds_0
 
-      assert length(events_1) == 2
-      sounds_1 = Enum.map(events_1, & &1.sound)
+      assert length(haps_1) == 2
+      sounds_1 = Enum.map(haps_1, &sound/1)
       assert "hh" in sounds_1
     end
   end
@@ -225,10 +231,10 @@ defmodule UzuPattern.PatternTest do
       p2 = parse("sd")
       combined = Pattern.stack([p1, p2])
 
-      events = Pattern.events(combined)
-      assert length(events) == 2
+      haps = Pattern.events(combined)
+      assert length(haps) == 2
 
-      sounds = Enum.map(events, & &1.sound)
+      sounds = Enum.map(haps, &sound/1)
       assert "bd" in sounds
       assert "sd" in sounds
     end
@@ -243,8 +249,8 @@ defmodule UzuPattern.PatternTest do
       inner2 = Pattern.stack([Pattern.pure("c"), Pattern.pure("d")])
       outer = Pattern.stack([inner1, inner2])
 
-      events = Pattern.query(outer, 0)
-      sounds = Enum.map(events, & &1.sound) |> Enum.sort()
+      haps = Pattern.query(outer, 0)
+      sounds = Enum.map(haps, &sound/1) |> Enum.sort()
       assert sounds == ["a", "b", "c", "d"]
     end
   end
@@ -254,14 +260,14 @@ defmodule UzuPattern.PatternTest do
   # ============================================================================
 
   describe "query/2" do
-    test "returns Event structs" do
+    test "returns Hap structs" do
       pattern = parse("bd sd")
-      events = Pattern.query(pattern, 0)
+      haps = Pattern.query(pattern, 0)
 
-      assert length(events) == 2
-      event = hd(events)
-      assert event.sound == "bd"
-      assert event.time == 0.0
+      assert length(haps) == 2
+      hap = hd(haps)
+      assert sound(hap) == "bd"
+      assert time(hap) == 0.0
     end
 
     test "returns empty for nil pattern" do
@@ -270,24 +276,24 @@ defmodule UzuPattern.PatternTest do
   end
 
   describe "query_for_scheduler/2" do
-    test "returns events as maps" do
+    test "returns haps as maps" do
       pattern = parse("bd sd")
-      events = Pattern.query_for_scheduler(pattern, 0)
+      haps = Pattern.query_for_scheduler(pattern, 0)
 
-      assert length(events) == 2
-      event = hd(events)
-      assert event.time == 0.0
-      assert event.s == "bd"
+      assert length(haps) == 2
+      hap = hd(haps)
+      assert hap.part.begin == 0.0
+      assert hap.value.s == "bd"
     end
   end
 
   describe "events/1" do
-    test "extracts raw events for cycle 0" do
+    test "extracts raw haps for cycle 0" do
       pattern = parse("bd sd")
-      events = Pattern.events(pattern)
+      haps = Pattern.events(pattern)
 
-      assert length(events) == 2
-      assert hd(events).sound == "bd"
+      assert length(haps) == 2
+      assert sound(hd(haps)) == "bd"
     end
   end
 
@@ -301,8 +307,8 @@ defmodule UzuPattern.PatternTest do
       expanded = Pattern.expand_for_transport(p, num_cycles: 4)
 
       assert Map.keys(expanded.cycles) == [0, 1, 2, 3]
-      assert hd(expanded.cycles[0]).s == "bd"
-      assert hd(expanded.cycles[1]).s == "sd"
+      assert hd(expanded.cycles[0]).value.s == "bd"
+      assert hd(expanded.cycles[1]).value.s == "sd"
     end
 
     test "defaults to 16 cycles" do
@@ -350,8 +356,8 @@ defmodule UzuPattern.PatternTest do
       pattern = parse("bd sd hh cp")
 
       for cycle <- [0, 1, 8, 9, 10, 100, 1000] do
-        events = Pattern.query(pattern, cycle)
-        assert length(events) == 4, "Failed at cycle #{cycle}"
+        haps = Pattern.query(pattern, cycle)
+        assert length(haps) == 4, "Failed at cycle #{cycle}"
       end
     end
   end
@@ -369,13 +375,13 @@ defmodule UzuPattern.PatternTest do
         |> Pattern.rev()
         |> Pattern.every(2, &Pattern.gain(&1, 0.5))
 
-      events = Pattern.query(pattern, 0)
-      assert length(events) == 8
-      assert Enum.all?(events, fn e -> e.params[:gain] == 0.5 end)
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 8
+      assert Enum.all?(haps, fn h -> h.value[:gain] == 0.5 end)
 
-      events_1 = Pattern.query(pattern, 1)
-      assert length(events_1) == 8
-      assert Enum.all?(events_1, fn e -> e.params[:gain] == nil end)
+      haps_1 = Pattern.query(pattern, 1)
+      assert length(haps_1) == 8
+      assert Enum.all?(haps_1, fn h -> h.value[:gain] == nil end)
     end
   end
 end
