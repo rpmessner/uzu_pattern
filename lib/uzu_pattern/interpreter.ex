@@ -66,11 +66,23 @@ defmodule UzuPattern.Interpreter do
     end
   end
 
-  # Alternation (slowcat)
-  defp interpret_node(%{type: :alternation, children: children}) do
+  # Alternation (slowcat) with optional modifiers
+  defp interpret_node(%{type: :alternation, children: children} = node) do
     items = extract_sequence_items(children)
     patterns = Enum.map(items, &interpret_item/1)
-    Pattern.slowcat(patterns)
+    base_pattern = Pattern.slowcat(patterns)
+
+    # Apply modifiers
+    case node do
+      %{repeat: n} when is_integer(n) and n > 1 ->
+        Pattern.fast(base_pattern, n)
+
+      %{division: div} when is_number(div) ->
+        Pattern.slow(base_pattern, div)
+
+      _ ->
+        base_pattern
+    end
   end
 
   # Polymetric

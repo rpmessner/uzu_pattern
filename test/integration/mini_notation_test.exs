@@ -289,6 +289,42 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       assert "sd" in sounds_0
       assert "hh" in sounds_1
     end
+
+    test "alternation with repeat modifier" do
+      pattern = parse("<bd sd>*2")
+
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 2
+      assert sounds(haps) == ["bd", "sd"]
+    end
+
+    test "alternation with division modifier" do
+      pattern = parse("<bd sd>/2")
+
+      # /2 slows alternation - events occur at stretched times
+      haps_0 = Pattern.query(pattern, 0)
+      haps_2 = Pattern.query(pattern, 2)
+      haps_4 = Pattern.query(pattern, 4)
+
+      # bd at cycle 0, sd at cycle 2, bd at cycle 4
+      assert sounds(haps_0) == ["bd"]
+      assert sounds(haps_2) == ["sd"]
+      assert sounds(haps_4) == ["bd"]
+    end
+
+    test "alternation with subdivision and repeat" do
+      pattern = parse("<[bd sd] [hh sd]>*2")
+
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 4
+      assert sounds(haps) == ["bd", "sd", "hh", "sd"]
+
+      # Timing: each subdivision takes half a cycle
+      assert_in_delta Enum.at(times(haps), 0), 0.0, 0.01
+      assert_in_delta Enum.at(times(haps), 1), 0.25, 0.01
+      assert_in_delta Enum.at(times(haps), 2), 0.5, 0.01
+      assert_in_delta Enum.at(times(haps), 3), 0.75, 0.01
+    end
   end
 
   # ============================================================================
@@ -441,6 +477,108 @@ defmodule UzuPattern.Integration.MiniNotationTest do
     test "polyrhythm" do
       haps = parse_events("{bd bd bd, hh hh hh hh hh}")
       assert length(haps) == 8
+    end
+  end
+
+  # ============================================================================
+  # Pattern Combinations (modifiers on structures)
+  # ============================================================================
+
+  describe "pattern combinations" do
+    test "subdivision repeat on alternation elements" do
+      # Each alternation element is a repeated subdivision
+      pattern = parse("<[bd sd]*2 [hh cp]*2>")
+
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+
+      assert length(haps_0) == 4
+      assert sounds(haps_0) == ["bd", "sd", "bd", "sd"]
+
+      assert length(haps_1) == 4
+      assert sounds(haps_1) == ["hh", "cp", "hh", "cp"]
+    end
+
+    test "nested modifiers" do
+      # [[bd sd]*2]*2 = 8 events
+      pattern = parse("[[bd sd]*2]*2")
+      haps = Pattern.query(pattern, 0)
+
+      assert length(haps) == 8
+      assert sounds(haps) == ["bd", "sd", "bd", "sd", "bd", "sd", "bd", "sd"]
+    end
+
+    test "alternation inside subdivision with repeat" do
+      # [<bd sd> hh]*2 - the *2 speeds up the whole subdivision,
+      # which also speeds up the internal alternation
+      pattern = parse("[<bd sd> hh]*2")
+
+      haps_0 = Pattern.query(pattern, 0)
+
+      assert length(haps_0) == 4
+      # First iteration: bd hh, second iteration: sd hh
+      # The alternation advances each time through
+      assert sounds(haps_0) == ["bd", "hh", "sd", "hh"]
+    end
+
+    test "polyphony with alternation" do
+      # Stack of alternations
+      pattern = parse("[<bd sd>, <hh cp>]")
+
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+
+      # Cycle 0: bd and hh at same time
+      assert length(haps_0) == 2
+      assert Enum.sort(sounds(haps_0)) == ["bd", "hh"]
+
+      # Cycle 1: sd and cp at same time
+      assert length(haps_1) == 2
+      assert Enum.sort(sounds(haps_1)) == ["cp", "sd"]
+    end
+
+    test "alternation with division inside repeat" do
+      # <bd/2 sd>*2 - bd spans 2 cycles at half speed, but whole alt is doubled
+      pattern = parse("<bd sd>*4")
+      haps = Pattern.query(pattern, 0)
+
+      # *4 means 4 iterations per cycle = 4 events
+      assert length(haps) == 4
+      assert sounds(haps) == ["bd", "sd", "bd", "sd"]
+    end
+
+    test "deeply nested structures" do
+      # [<[bd sd] hh> cp]
+      pattern = parse("[<[bd sd] hh> cp]")
+
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+
+      # Cycle 0: [bd sd] and cp
+      assert length(haps_0) == 3
+      # Cycle 1: hh and cp
+      assert length(haps_1) == 2
+    end
+
+    test "weight with alternation" do
+      pattern = parse("<bd@2 sd>")
+
+      haps_0 = Pattern.query(pattern, 0)
+
+      bd = Enum.find(haps_0, &(Hap.sound(&1) == "bd"))
+      bd_dur = bd.part.end - bd.part.begin
+      # bd should take full cycle in cycle 0
+      assert_in_delta bd_dur, 1.0, 0.01
+    end
+
+    test "multiple alternations in sequence" do
+      pattern = parse("<bd sd> <hh cp>")
+
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+
+      assert sounds(haps_0) == ["bd", "hh"]
+      assert sounds(haps_1) == ["sd", "cp"]
     end
   end
 
