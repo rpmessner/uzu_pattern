@@ -50,7 +50,7 @@ defmodule UzuPattern.Pattern do
 
   alias UzuPattern.Hap
   alias UzuPattern.TimeSpan
-  alias UzuPattern.Pattern.{Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony}
+  alias UzuPattern.Pattern.{Starters, Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony}
 
   @type query_fn :: (non_neg_integer() -> [Hap.t()])
 
@@ -163,6 +163,95 @@ defmodule UzuPattern.Pattern do
   def from_events(haps), do: from_haps(haps)
 
   # ============================================================================
+  # Context Modifiers
+  # ============================================================================
+
+  @doc """
+  Add source location to a pattern's haps for highlighting.
+
+  Locations are stored in `hap.context.locations` and survive pattern transforms.
+  This is the Strudel-compatible way to track source positions.
+
+  ## Examples
+
+      iex> p = Pattern.pure("bd") |> Pattern.with_loc(15, 23)
+      iex> [hap] = Pattern.query(p, 0)
+      iex> hap.context.locations
+      [%{start: 15, end: 23}]
+  """
+  def with_loc(%__MODULE__{} = pattern, start_pos, end_pos) do
+    location = %{start: start_pos, end: end_pos}
+
+    with_context(pattern, fn context ->
+      locations = Map.get(context, :locations, [])
+      Map.put(context, :locations, locations ++ [location])
+    end)
+  end
+
+  @doc """
+  Transform the context of all haps produced by a pattern.
+
+  The context_fn receives the current context map and returns the new context.
+  This is applied at query time, so it survives pattern transforms.
+
+  ## Examples
+
+      iex> p = Pattern.pure("bd")
+      iex> p = Pattern.with_context(p, fn ctx -> Map.put(ctx, :color, "red") end)
+      iex> [hap] = Pattern.query(p, 0)
+      iex> hap.context.color
+      "red"
+  """
+  def with_context(%__MODULE__{query: query} = pattern, context_fn) when is_function(context_fn, 1) do
+    new_query = fn cycle ->
+      query.(cycle)
+      |> Enum.map(fn hap ->
+        new_context = context_fn.(hap.context)
+        %{hap | context: new_context}
+      end)
+    end
+
+    %{pattern | query: new_query}
+  end
+
+  @doc """
+  Add a global offset to all location positions in a pattern's haps.
+
+  This adjusts existing locations (from mini-notation parsing) by adding
+  the offset to their start/end positions. Applied at query time, so it
+  survives pattern transforms like fast/slow.
+
+  Use this when you know the global position of a pattern string in the
+  source document and want highlighting to work correctly.
+
+  ## Examples
+
+      iex> p = Pattern.new("bd sd")  # locations at 0-2, 3-5 (relative)
+      iex> p = Pattern.with_offset(p, 15)  # adjust to global positions
+      iex> [hap1, _] = Pattern.query(p, 0)
+      iex> [loc] = hap1.context.locations
+      iex> {loc.start, loc.end}
+      {15, 17}
+  """
+  def with_offset(%__MODULE__{} = pattern, offset) when is_integer(offset) do
+    with_context(pattern, fn context ->
+      case context do
+        %{locations: locations} when is_list(locations) ->
+          adjusted =
+            Enum.map(locations, fn
+              %{start: s, end: e} -> %{start: s + offset, end: e + offset}
+              loc -> loc
+            end)
+
+          %{context | locations: adjusted}
+
+        _ ->
+          context
+      end
+    end)
+  end
+
+  # ============================================================================
   # Pattern Combinators
   # ============================================================================
 
@@ -238,15 +327,15 @@ defmodule UzuPattern.Pattern do
       patterns
       |> Enum.with_index()
       |> Enum.flat_map(fn {pattern, index} ->
-        offset = index * step
+        time_offset = index * step
 
         # Query pattern (it returns haps in [0, 1))
         # Scale and shift those haps to fit in this slot
         pattern
         |> query(cycle)
         |> Enum.map(fn hap ->
-          new_whole = scale_and_offset_timespan(hap.whole, step, offset)
-          new_part = scale_and_offset_timespan(hap.part, step, offset)
+          new_whole = scale_and_offset_timespan(hap.whole, step, time_offset)
+          new_part = scale_and_offset_timespan(hap.part, step, time_offset)
           %{hap | whole: new_whole, part: new_part}
         end)
       end)
@@ -303,6 +392,22 @@ defmodule UzuPattern.Pattern do
       end)
     end)
   end
+
+  # Variadic versions for convenience: stack(p1, p2) instead of stack([p1, p2])
+  def stack(p1, p2), do: stack([p1, p2])
+  def stack(p1, p2, p3), do: stack([p1, p2, p3])
+  def stack(p1, p2, p3, p4), do: stack([p1, p2, p3, p4])
+
+  # ============================================================================
+  # Pattern Starters (delegated to Pattern.Starters)
+  # ============================================================================
+
+  defdelegate s(mini_notation), to: Starters
+  defdelegate s(pattern, sound_name), to: Starters
+  defdelegate sound(mini_notation), to: Starters
+  defdelegate sound(pattern, sound_name), to: Starters
+  defdelegate n(mini_notation), to: Starters
+  defdelegate note(mini_notation), to: Starters
 
   # ============================================================================
   # Time Modifiers (delegated to Pattern.Time)

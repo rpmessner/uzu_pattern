@@ -332,13 +332,16 @@ defmodule UzuPattern.Pattern.Harmony do
 
   defp apply_scale_to_hap(hap, scale_name, octave \\ 3) do
     # For Haps, numeric value (degree) could be in:
+    # - hap.value.n (from n() function)
     # - hap.value.value (signal patterns)
     # - hap.value.s parsed as number (explicit degree notation)
+    n_val = Map.get(hap.value, :n)
     sound = Map.get(hap.value, :s, "")
     value = Map.get(hap.value, :value)
 
     degree =
       cond do
+        is_number(n_val) -> n_val
         is_number(value) -> value
         is_binary(sound) -> parse_number(sound)
         is_number(sound) -> sound
