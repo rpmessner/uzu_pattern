@@ -50,9 +50,11 @@ defmodule UzuPattern.Pattern do
 
   alias UzuPattern.Hap
   alias UzuPattern.TimeSpan
-  alias UzuPattern.Pattern.{Starters, Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony}
+  alias UzuPattern.Pattern.{Starters, Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony, Algebra}
 
-  @type query_fn :: (non_neg_integer() -> [Hap.t()])
+  # Query function now takes a TimeSpan and returns haps for that span.
+  # This enables pattern algebra operations that need to query arbitrary time ranges.
+  @type query_fn :: (TimeSpan.t() -> [Hap.t()])
 
   @type t :: %__MODULE__{
           query: query_fn(),
@@ -70,8 +72,8 @@ defmodule UzuPattern.Pattern do
 
   ## With query function
 
-  The query function takes a cycle number and returns events for that cycle.
-  Events should have time values in [0, 1) representing position within the cycle.
+  The query function takes a TimeSpan and returns haps for that time range.
+  Haps should have timing relative to the queried span.
 
   ## With mini-notation string
 
@@ -80,7 +82,7 @@ defmodule UzuPattern.Pattern do
   ## Examples
 
       # From query function (returns Haps)
-      iex> pattern = Pattern.new(fn _cycle -> [%Hap{whole: ..., part: ..., value: %{s: "bd"}, context: ...}] end)
+      iex> pattern = Pattern.new(fn span -> [%Hap{whole: ..., part: ..., value: %{s: "bd"}, context: ...}] end)
 
       # From string
       iex> pattern = Pattern.new("bd sd hh")
@@ -94,6 +96,58 @@ defmodule UzuPattern.Pattern do
 
   def new(source) when is_binary(source) do
     UzuPattern.parse(source)
+  end
+
+  @doc """
+  Create a pattern from a cycle-based query function.
+
+  This is a convenience constructor for patterns that work in terms of integer
+  cycles rather than arbitrary TimeSpans. The function receives a cycle number
+  and should return haps with cycle-relative timing (0.0 to 1.0).
+
+  Internally converts to span-based queries by:
+  1. Splitting the query span by cycle boundaries
+  2. Calling the cycle function for each cycle
+  3. Shifting results to absolute time
+  4. Filtering to the query span
+
+  ## Examples
+
+      iex> p = Pattern.from_cycles(fn cycle ->
+      ...>   [%Hap{whole: %{begin: 0.0, end: 1.0}, part: %{begin: 0.0, end: 1.0},
+      ...>         value: %{s: "bd", cycle: cycle}, context: %{}}]
+      ...> end)
+      iex> [hap] = Pattern.query(p, 3)
+      iex> hap.value.cycle
+      3
+  """
+  def from_cycles(cycle_fn) when is_function(cycle_fn, 1) do
+    new(fn span ->
+      TimeSpan.span_cycles(span)
+      |> Enum.flat_map(fn cycle_span ->
+        cycle = TimeSpan.cycle_of(cycle_span)
+
+        cycle_fn.(cycle)
+        |> Enum.map(fn hap -> shift_hap(hap, cycle) end)
+        |> Enum.filter(fn hap ->
+          # Filter to haps that intersect the query span
+          TimeSpan.intersection(hap.part, cycle_span) != nil
+        end)
+      end)
+    end)
+  end
+
+  # Helper for from_cycles - shift a hap by a cycle offset
+  defp shift_hap(%Hap{} = hap, 0), do: hap
+
+  defp shift_hap(%Hap{} = hap, offset) do
+    %{hap | whole: shift_timespan(hap.whole, offset), part: shift_timespan(hap.part, offset)}
+  end
+
+  defp shift_timespan(nil, _offset), do: nil
+
+  defp shift_timespan(%{begin: b, end: e}, offset) do
+    %{begin: b + offset, end: e + offset}
   end
 
   @doc """
@@ -136,8 +190,19 @@ defmodule UzuPattern.Pattern do
         %{locations: [], tags: []}
       end
 
-    new(fn _cycle ->
-      [Hap.new(%{begin: 0.0, end: 1.0}, hap_value, context)]
+    new(fn span ->
+      # For each cycle that the span covers, produce a hap at [cycle, cycle+1)
+      TimeSpan.span_cycles(span)
+      |> Enum.flat_map(fn cycle_span ->
+        cycle = TimeSpan.cycle_of(cycle_span)
+        # The whole event spans [cycle, cycle+1)
+        whole = %{begin: cycle * 1.0, end: (cycle + 1) * 1.0}
+        # The part is clipped to the query span
+        case TimeSpan.intersection(whole, cycle_span) do
+          nil -> []
+          part -> [%Hap{whole: whole, part: part, value: hap_value, context: context}]
+        end
+      end)
     end)
   end
 
@@ -148,15 +213,31 @@ defmodule UzuPattern.Pattern do
   Create an empty/silent pattern.
   """
   def silence do
-    new(fn _cycle -> [] end)
+    new(fn _span -> [] end)
   end
 
   @doc """
   Create a pattern from a list of pre-computed haps.
-  The haps will be returned unchanged for any cycle.
+
+  The haps are assumed to have absolute timing. This filters and clips
+  them to the query span.
   """
   def from_haps(haps) when is_list(haps) do
-    new(fn _cycle -> haps end)
+    new(fn span ->
+      haps
+      |> Enum.filter(fn hap ->
+        # Check if hap intersects the query span
+        TimeSpan.intersection(hap.part, span) != nil
+      end)
+      |> Enum.map(fn hap ->
+        # Clip part to query span (whole stays the same for onset detection)
+        case TimeSpan.intersection(hap.part, span) do
+          nil -> nil
+          clipped_part -> %{hap | part: clipped_part}
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+    end)
   end
 
   # Alias for backwards compat
@@ -285,11 +366,33 @@ defmodule UzuPattern.Pattern do
   def slowcat(patterns) when is_list(patterns) do
     n = length(patterns)
 
-    new(fn cycle ->
-      # Select pattern based on cycle, wrapping around
-      index = rem(cycle, n)
-      pattern = Enum.at(patterns, index)
-      query(pattern, cycle)
+    new(fn span ->
+      # Split span by cycles and query appropriate pattern for each
+      TimeSpan.span_cycles(span)
+      |> Enum.flat_map(fn cycle_span ->
+        cycle = TimeSpan.cycle_of(cycle_span)
+
+        # Select pattern based on cycle, wrapping around
+        index = rem(cycle, n)
+        pattern = Enum.at(patterns, index)
+
+        # Calculate local cycle for this pattern
+        local_cycle = div(cycle, n)
+
+        # Query the pattern with a span in its local time
+        # Map [cycle, cycle+1) to [local_cycle, local_cycle+1)
+        local_span = %{
+          begin: local_cycle + (cycle_span.begin - cycle),
+          end: local_cycle + (cycle_span.end - cycle)
+        }
+
+        query_span(pattern, local_span)
+        |> Enum.map(fn hap ->
+          # Shift hap back to output time
+          shift_offset = cycle - local_cycle
+          shift_hap(hap, shift_offset)
+        end)
+      end)
     end)
   end
 
@@ -323,23 +426,55 @@ defmodule UzuPattern.Pattern do
     n = length(patterns)
     step = 1.0 / n
 
-    new(fn cycle ->
-      patterns
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {pattern, index} ->
-        time_offset = index * step
+    new(fn span ->
+      # Split by cycle first
+      TimeSpan.span_cycles(span)
+      |> Enum.flat_map(fn cycle_span ->
+        cycle = TimeSpan.cycle_of(cycle_span)
 
-        # Query pattern (it returns haps in [0, 1))
-        # Scale and shift those haps to fit in this slot
-        pattern
-        |> query(cycle)
-        |> Enum.map(fn hap ->
-          new_whole = scale_and_offset_timespan(hap.whole, step, time_offset)
-          new_part = scale_and_offset_timespan(hap.part, step, time_offset)
-          %{hap | whole: new_whole, part: new_part}
+        patterns
+        |> Enum.with_index()
+        |> Enum.flat_map(fn {pattern, index} ->
+          # This pattern occupies [cycle + index*step, cycle + (index+1)*step)
+          slot_begin = cycle + index * step
+          slot_end = cycle + (index + 1) * step
+          slot_span = %{begin: slot_begin, end: slot_end}
+
+          # Check if query span intersects this slot
+          case TimeSpan.intersection(cycle_span, slot_span) do
+            nil ->
+              []
+
+            intersected_span ->
+              # Map the intersected span into the child pattern's time
+              # The slot maps to a full cycle in the child pattern
+              child_span = %{
+                begin: cycle + (intersected_span.begin - slot_begin) / step,
+                end: cycle + (intersected_span.end - slot_begin) / step
+              }
+
+              query_span(pattern, child_span)
+              |> Enum.map(fn hap ->
+                # Scale and shift hap from child time back to output time
+                scale_hap(hap, step, slot_begin - cycle * step)
+              end)
+              |> Enum.filter(fn hap ->
+                # Filter to only haps that intersect the query
+                TimeSpan.intersection(hap.part, cycle_span) != nil
+              end)
+          end
         end)
       end)
     end)
+  end
+
+  # Scale a hap's timespans by a factor and add an offset
+  defp scale_hap(%Hap{} = hap, scale, offset) do
+    %{
+      hap
+      | whole: scale_and_offset_timespan(hap.whole, scale, offset),
+        part: scale_and_offset_timespan(hap.part, scale, offset)
+    }
   end
 
   defp scale_and_offset_timespan(nil, _scale, _offset), do: nil
@@ -386,9 +521,9 @@ defmodule UzuPattern.Pattern do
   def stack([single]), do: single
 
   def stack(patterns) when is_list(patterns) do
-    new(fn cycle ->
+    new(fn span ->
       Enum.flat_map(patterns, fn pattern ->
-        query(pattern, cycle)
+        query_span(pattern, span)
       end)
     end)
   end
@@ -503,6 +638,30 @@ defmodule UzuPattern.Pattern do
   defdelegate sample_at(pattern, time), to: Signal
 
   # ============================================================================
+  # Algebra Delegations (Pattern algebra for composition)
+  # ============================================================================
+
+  # Functor
+  defdelegate fmap(pattern, func), to: Algebra
+
+  # Applicative
+  defdelegate app_both(pat_func, pat_val), to: Algebra
+  defdelegate app_left(pat_func, pat_val), to: Algebra
+  defdelegate app_right(pat_func, pat_val), to: Algebra
+
+  # Monad
+  defdelegate bind(pattern, func), to: Algebra
+  defdelegate bind_with(pattern, func, choose_whole), to: Algebra
+  defdelegate join(pat_of_pats), to: Algebra
+  defdelegate inner_bind(pattern, func), to: Algebra
+  defdelegate inner_join(pat_of_pats), to: Algebra
+  defdelegate outer_bind(pattern, func), to: Algebra
+  defdelegate outer_join(pat_of_pats), to: Algebra
+  defdelegate squeeze_bind(pattern, func), to: Algebra
+  defdelegate squeeze_join(pat_of_pats), to: Algebra
+  defdelegate focus_span(pattern, span), to: Algebra
+
+  # ============================================================================
   # Harmony Delegations
   # ============================================================================
 
@@ -530,10 +689,29 @@ defmodule UzuPattern.Pattern do
   # ============================================================================
 
   @doc """
+  Query the pattern for events within a TimeSpan.
+
+  This is the core query mechanism. All other query functions delegate to this.
+  Returns haps with absolute timing within the queried span.
+
+  ## Examples
+
+      iex> pattern = Pattern.new("bd sd")
+      iex> haps = Pattern.query_span(pattern, TimeSpan.new(0, 1))
+      iex> length(haps)
+      2
+  """
+  def query_span(%__MODULE__{query: query_fn}, %{begin: _, end: _} = span) do
+    query_fn.(span)
+  end
+
+  def query_span(nil, _span), do: []
+
+  @doc """
   Query the pattern for a time arc (Strudel-style).
 
   Takes a TimeSpan and returns haps with absolute timing.
-  Splits the query at cycle boundaries internally.
+  This is an alias for query_span for API compatibility.
 
   ## Examples
 
@@ -543,48 +721,30 @@ defmodule UzuPattern.Pattern do
       4
   """
   def query_arc(%__MODULE__{} = pattern, %{begin: _, end: _} = span) do
-    TimeSpan.span_cycles(span)
-    |> Enum.flat_map(fn cycle_span ->
-      cycle = TimeSpan.cycle_of(cycle_span)
-
-      query_cycle(pattern, cycle)
-      |> Enum.map(&shift_hap_time(&1, cycle))
-      |> Enum.filter(fn hap ->
-        # Filter to haps that start within this span
-        hap.part.begin >= cycle_span.begin and hap.part.begin < cycle_span.end
-      end)
-    end)
+    query_span(pattern, span)
   end
 
   def query_arc(nil, _span), do: []
-
-  # Shift hap timing by cycle offset to convert to absolute time
-  defp shift_hap_time(hap, 0), do: hap
-
-  defp shift_hap_time(hap, cycle) do
-    %{
-      hap
-      | whole: hap.whole && %{hap.whole | begin: hap.whole.begin + cycle, end: hap.whole.end + cycle},
-        part: %{hap.part | begin: hap.part.begin + cycle, end: hap.part.end + cycle}
-    }
-  end
 
   @doc """
   Query the pattern for events at a specific cycle.
 
   Returns a list of haps with cycle-relative timing (values in [0, 1)).
-  For absolute timing, use `query_arc/2` instead.
+  This is a convenience wrapper around query_span.
+
+  For absolute timing, use `query_arc/2` or `query_span/2` instead.
   """
   def query(%__MODULE__{} = pattern, cycle) when is_integer(cycle) and cycle >= 0 do
-    query_cycle(pattern, cycle)
+    span = TimeSpan.new(cycle, cycle + 1)
+
+    query_span(pattern, span)
+    |> Enum.map(fn hap ->
+      # Convert absolute timing back to cycle-relative [0, 1)
+      shift_hap(hap, -cycle)
+    end)
   end
 
   def query(nil, _cycle), do: []
-
-  # Internal: query raw cycle from the query function
-  defp query_cycle(%__MODULE__{query: query_fn}, cycle) do
-    query_fn.(cycle)
-  end
 
   @doc """
   Query the pattern and return Haps as JSON-serializable maps.
