@@ -290,4 +290,31 @@ defmodule UzuPattern.Hap do
   def scale(%__MODULE__{whole: whole, part: part} = hap, factor) do
     %{hap | whole: TimeSpan.scale(whole, factor), part: TimeSpan.scale(part, factor)}
   end
+
+  @doc """
+  Get the whole timespan if present, otherwise the part.
+
+  This is useful for algebra operations where you want to query using
+  the extent of a hap but handle continuous (whole: nil) haps gracefully.
+  """
+  @spec whole_or_part(t()) :: timespan()
+  def whole_or_part(%__MODULE__{whole: nil, part: part}), do: part
+  def whole_or_part(%__MODULE__{whole: whole}), do: whole
+
+  @doc """
+  Check if this hap's onset falls at the beginning of its part.
+
+  This is true when whole.begin == part.begin, meaning the event
+  "starts" within this query window. Used to avoid triggering
+  events multiple times when they span query boundaries.
+
+  Returns false for continuous events (no onset).
+  """
+  @spec has_onset?(t()) :: boolean()
+  def has_onset?(%__MODULE__{whole: nil}), do: false
+
+  def has_onset?(%__MODULE__{whole: %{begin: wb}, part: %{begin: pb}}) do
+    # Use small epsilon for float comparison
+    abs(wb - pb) < 1.0e-9
+  end
 end
