@@ -343,6 +343,82 @@ defmodule UzuPattern.Pattern.TimeTest do
     end
   end
 
+  describe "fast/2 with pattern arguments" do
+    test "fast with mini-notation string alternates speeds" do
+      pattern = parse("bd sd") |> Pattern.fast("<2 4>")
+
+      # Cycle 0: fast(2) - 4 events
+      haps_0 = Pattern.query(pattern, 0)
+      assert length(haps_0) == 4
+      assert sounds(haps_0) == ["bd", "sd", "bd", "sd"]
+
+      # Cycle 1: fast(4) - 8 events
+      haps_1 = Pattern.query(pattern, 1)
+      assert length(haps_1) == 8
+      assert sounds(haps_1) == ["bd", "sd", "bd", "sd", "bd", "sd", "bd", "sd"]
+    end
+
+    test "fast with pattern argument uses squeeze semantics" do
+      factor_pattern =
+        UzuPattern.Pattern.slowcat([
+          UzuPattern.Pattern.pure("2"),
+          UzuPattern.Pattern.pure("4")
+        ])
+
+      pattern = parse("bd sd") |> Pattern.fast(factor_pattern)
+
+      # Cycle 0: fast(2)
+      haps_0 = Pattern.query(pattern, 0)
+      assert length(haps_0) == 4
+
+      # Cycle 1: fast(4)
+      haps_1 = Pattern.query(pattern, 1)
+      assert length(haps_1) == 8
+    end
+
+    test "fast string argument returns unchanged pattern on invalid string" do
+      pattern = parse("bd sd") |> Pattern.fast("invalid")
+      haps = Pattern.query(pattern, 0)
+      # Should return original unchanged pattern (2 events)
+      assert length(haps) == 2
+    end
+  end
+
+  describe "slow/2 with pattern arguments" do
+    test "slow with mini-notation string alternates speeds" do
+      pattern = parse("bd sd hh cp") |> Pattern.slow("<2 4>")
+
+      # Cycle 0: slow(2) - first half of pattern
+      haps_0 = Pattern.query(pattern, 0)
+      assert length(haps_0) == 2
+      assert sounds(haps_0) == ["bd", "sd"]
+
+      # Cycle 1: slow(4) - first quarter of pattern
+      haps_1 = Pattern.query(pattern, 1)
+      assert length(haps_1) == 1
+      assert sounds(haps_1) == ["bd"]
+
+      # Cycle 2: slow(2) again - first half (each cycle is independent)
+      haps_2 = Pattern.query(pattern, 2)
+      assert length(haps_2) == 2
+      assert sounds(haps_2) == ["bd", "sd"]
+    end
+
+    test "slow with pattern argument" do
+      factor_pattern =
+        UzuPattern.Pattern.slowcat([
+          UzuPattern.Pattern.pure("2"),
+          UzuPattern.Pattern.pure("4")
+        ])
+
+      pattern = parse("bd sd hh cp") |> Pattern.slow(factor_pattern)
+
+      # Cycle 0: slow(2) - 2 events
+      haps_0 = Pattern.query(pattern, 0)
+      assert length(haps_0) == 2
+    end
+  end
+
   describe "fast/slow round trip" do
     test "fast/slow preserves structure" do
       pattern = parse("bd sd")

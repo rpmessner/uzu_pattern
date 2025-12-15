@@ -325,6 +325,118 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       assert_in_delta Enum.at(times(haps), 2), 0.5, 0.01
       assert_in_delta Enum.at(times(haps), 3), 0.75, 0.01
     end
+
+    test "alternation with slowed subdivisions - each pattern starts fresh" do
+      # <[a b c d]/4 [e f g h]/4> should alternate between patterns,
+      # each progressing through their own subdivision independently
+      pattern = parse("<[a b c d]/4 [e f g h]/4>")
+
+      # Cycle 0: first pattern, first slice → should be "a"
+      haps_0 = Pattern.query(pattern, 0)
+      assert sounds(haps_0) == ["a"], "Cycle 0: expected [a], got #{inspect(sounds(haps_0))}"
+
+      # Cycle 1: second pattern, first slice → should be "e"
+      haps_1 = Pattern.query(pattern, 1)
+      assert sounds(haps_1) == ["e"], "Cycle 1: expected [e], got #{inspect(sounds(haps_1))}"
+
+      # Cycle 2: first pattern, second slice → should be "b"
+      haps_2 = Pattern.query(pattern, 2)
+      assert sounds(haps_2) == ["b"], "Cycle 2: expected [b], got #{inspect(sounds(haps_2))}"
+
+      # Cycle 3: second pattern, second slice → should be "f"
+      haps_3 = Pattern.query(pattern, 3)
+      assert sounds(haps_3) == ["f"], "Cycle 3: expected [f], got #{inspect(sounds(haps_3))}"
+
+      # Cycle 4: first pattern, third slice → should be "c"
+      haps_4 = Pattern.query(pattern, 4)
+      assert sounds(haps_4) == ["c"], "Cycle 4: expected [c], got #{inspect(haps_4)}"
+
+      # Cycle 5: second pattern, third slice → should be "g"
+      haps_5 = Pattern.query(pattern, 5)
+      assert sounds(haps_5) == ["g"], "Cycle 5: expected [g], got #{inspect(sounds(haps_5))}"
+    end
+
+    test "alternation with repeat operator in slowed subdivisions" do
+      # This is the user's specific pattern: <[3!5 6!5 2!5 5!5]/4 [1!7 2!7 3!7 5!7]/4>
+      # Using note values instead of sounds for simplicity
+      pattern = parse("<[a!5 b!5 c!5 d!5]/4 [e!7 f!7 g!7 h!7]/4>")
+
+      # Cycle 0: first pattern, first slice → 5 "a"s
+      haps_0 = Pattern.query(pattern, 0)
+
+      assert sounds(haps_0) == ["a", "a", "a", "a", "a"],
+             "Cycle 0: expected 5 a's, got #{inspect(sounds(haps_0))}"
+
+      # Cycle 1: second pattern, first slice → 7 "e"s
+      haps_1 = Pattern.query(pattern, 1)
+
+      assert sounds(haps_1) == ["e", "e", "e", "e", "e", "e", "e"],
+             "Cycle 1: expected 7 e's, got #{inspect(sounds(haps_1))}"
+
+      # Cycle 2: first pattern, second slice → 5 "b"s
+      haps_2 = Pattern.query(pattern, 2)
+
+      assert sounds(haps_2) == ["b", "b", "b", "b", "b"],
+             "Cycle 2: expected 5 b's, got #{inspect(sounds(haps_2))}"
+
+      # Cycle 3: second pattern, second slice → 7 "f"s
+      haps_3 = Pattern.query(pattern, 3)
+
+      assert sounds(haps_3) == ["f", "f", "f", "f", "f", "f", "f"],
+             "Cycle 3: expected 7 f's, got #{inspect(sounds(haps_3))}"
+    end
+
+    test "three-way alternation with slowed subdivisions" do
+      pattern = parse("<[a b]/2 [c d]/2 [e f]/2>")
+
+      # Pattern cycles through 3 patterns, each slowed by 2
+      # Cycle 0: pattern 0, local cycle 0 → slice 0 → "a"
+      assert sounds(Pattern.query(pattern, 0)) == ["a"]
+      # Cycle 1: pattern 1, local cycle 0 → slice 0 → "c"
+      assert sounds(Pattern.query(pattern, 1)) == ["c"]
+      # Cycle 2: pattern 2, local cycle 0 → slice 0 → "e"
+      assert sounds(Pattern.query(pattern, 2)) == ["e"]
+      # Cycle 3: pattern 0, local cycle 1 → slice 1 → "b"
+      assert sounds(Pattern.query(pattern, 3)) == ["b"]
+      # Cycle 4: pattern 1, local cycle 1 → slice 1 → "d"
+      assert sounds(Pattern.query(pattern, 4)) == ["d"]
+      # Cycle 5: pattern 2, local cycle 1 → slice 1 → "f"
+      assert sounds(Pattern.query(pattern, 5)) == ["f"]
+    end
+
+    test "alternation with weighted and replicated subdivisions matches Strudel" do
+      # This pattern tests the combination of:
+      # - Alternation (<...>)
+      # - Replicate (!n) which affects weight calculation
+      # - Weight (@n) which affects duration
+      # - Division (/4) which slows the pattern
+      # Expected output matches Strudel's behavior
+      pattern = parse("<[3!5 6@3 2!5 5@4]/4 [1!7 2@4 3!7 5@4]/4>")
+
+      # Cycle 0: first pattern, slice 0 → 5 "3"s (3!5 occupies 5/17 of the pattern)
+      assert sounds(Pattern.query(pattern, 0)) == ["3", "3", "3", "3", "3"]
+
+      # Cycle 1: second pattern, slice 0 → 6 "1"s (1!7 spans into slice 1)
+      assert sounds(Pattern.query(pattern, 1)) == ["1", "1", "1", "1", "1", "1"]
+
+      # Cycle 2: first pattern, slice 1 → crosses 3!5, 6@3, 2!5 boundaries
+      assert sounds(Pattern.query(pattern, 2)) == ["3", "6", "2"]
+
+      # Cycle 3: second pattern, slice 1
+      assert sounds(Pattern.query(pattern, 3)) == ["1", "1", "2"]
+
+      # Cycle 4: first pattern, slice 2
+      assert sounds(Pattern.query(pattern, 4)) == ["2", "2", "2", "2", "2"]
+
+      # Cycle 5: second pattern, slice 2
+      assert sounds(Pattern.query(pattern, 5)) == ["3", "3", "3", "3", "3", "3"]
+
+      # Cycle 6: first pattern, slice 3
+      assert sounds(Pattern.query(pattern, 6)) == ["2", "5"]
+
+      # Cycle 7: second pattern, slice 3
+      assert sounds(Pattern.query(pattern, 7)) == ["3", "3", "5"]
+    end
   end
 
   # ============================================================================
