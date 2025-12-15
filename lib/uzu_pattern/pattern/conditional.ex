@@ -28,7 +28,7 @@ defmodule UzuPattern.Pattern.Conditional do
       1
   """
   def every(%Pattern{} = pattern, n, fun) when n > 0 and is_function(fun, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       if rem(cycle, n) == 0 do
         pattern |> fun.() |> Pattern.query(cycle)
       else
@@ -46,7 +46,7 @@ defmodule UzuPattern.Pattern.Conditional do
   def every(%Pattern{} = pattern, n, offset, fun)
       when is_integer(n) and n > 0 and is_integer(offset) and offset >= 0 and offset < n and
              is_function(fun, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       if rem(cycle, n) == offset do
         pattern |> fun.() |> Pattern.query(cycle)
       else
@@ -63,7 +63,7 @@ defmodule UzuPattern.Pattern.Conditional do
   def sometimes_by(%Pattern{} = pattern, probability, fun)
       when is_float(probability) and probability >= 0.0 and probability <= 1.0 and
              is_function(fun, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       :rand.seed(:exsss, {cycle, cycle * 7, cycle * 13})
 
       if :rand.uniform() < probability do
@@ -101,7 +101,7 @@ defmodule UzuPattern.Pattern.Conditional do
   Creates evolving grooves that shift phase over time.
   """
   def iter(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       rotation = rem(cycle, n)
 
       if rotation == 0 do
@@ -118,7 +118,7 @@ defmodule UzuPattern.Pattern.Conditional do
   Like iter/2 but rotates in reverse.
   """
   def iter_back(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       rotation = rem(cycle, n)
 
       if rotation == 0 do
@@ -157,7 +157,7 @@ defmodule UzuPattern.Pattern.Conditional do
   """
   def when_fn(%Pattern{} = pattern, condition_fn, fun)
       when is_function(condition_fn, 1) and is_function(fun, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       if condition_fn.(cycle) do
         pattern |> fun.() |> Pattern.query(cycle)
       else
@@ -173,7 +173,7 @@ defmodule UzuPattern.Pattern.Conditional do
   """
   def chunk(%Pattern{} = pattern, n, fun)
       when is_integer(n) and n > 0 and is_function(fun, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       chunk_index = rem(cycle, n)
       chunk_start = chunk_index / n
       chunk_end = (chunk_index + 1) / n
@@ -202,7 +202,7 @@ defmodule UzuPattern.Pattern.Conditional do
   """
   def chunk_back(%Pattern{} = pattern, n, fun)
       when is_integer(n) and n > 0 and is_function(fun, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       chunk_index = n - 1 - rem(cycle, n)
       chunk_start = chunk_index / n
       chunk_end = (chunk_index + 1) / n

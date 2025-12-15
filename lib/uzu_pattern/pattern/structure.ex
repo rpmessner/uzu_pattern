@@ -20,7 +20,7 @@ defmodule UzuPattern.Pattern.Structure do
   Reverse the pattern within each cycle.
   """
   def rev(%Pattern{} = pattern) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->
@@ -47,7 +47,7 @@ defmodule UzuPattern.Pattern.Structure do
   Events in the structure pattern with non-rest values mark positions to keep.
   """
   def struct_fn(%Pattern{} = pattern, %Pattern{} = structure) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern_haps = Pattern.query(pattern, cycle)
       struct_haps = Pattern.query(structure, cycle)
 
@@ -69,7 +69,7 @@ defmodule UzuPattern.Pattern.Structure do
   Mask values of "0" or "~" will filter out corresponding events.
   """
   def mask(%Pattern{} = pattern, %Pattern{} = mask_pattern) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern_haps = Pattern.query(pattern, cycle)
       mask_haps = Pattern.query(mask_pattern, cycle)
 
@@ -97,7 +97,7 @@ defmodule UzuPattern.Pattern.Structure do
   """
   def degrade_by(%Pattern{} = pattern, probability)
       when is_float(probability) and probability >= 0.0 and probability <= 1.0 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       :rand.seed(:exsss, {cycle, cycle * 7, cycle * 13})
 
       pattern
@@ -171,7 +171,7 @@ defmodule UzuPattern.Pattern.Structure do
   def echo(%Pattern{} = pattern, n, time_offset, gain_factor)
       when is_integer(n) and n > 0 and is_number(time_offset) and
              is_number(gain_factor) and gain_factor >= 0.0 and gain_factor <= 1.0 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       base_haps = Pattern.query(pattern, cycle)
 
       echoes =
@@ -201,7 +201,7 @@ defmodule UzuPattern.Pattern.Structure do
   Slice pattern into N parts and interleave them (stutter effect).
   """
   def striate(%Pattern{} = pattern, n) when is_integer(n) and n > 1 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.flat_map(fn hap ->
@@ -224,7 +224,7 @@ defmodule UzuPattern.Pattern.Structure do
   Divides each event into N equal parts.
   """
   def chop(%Pattern{} = pattern, n) when is_integer(n) and n > 1 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.flat_map(fn hap ->

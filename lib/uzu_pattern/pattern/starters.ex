@@ -50,7 +50,7 @@ defmodule UzuPattern.Pattern.Starters do
     base_pattern = parse_to_pattern(mini_notation)
 
     # Transform: convert sound values to :n parameters when they're numbers
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       base_pattern
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->

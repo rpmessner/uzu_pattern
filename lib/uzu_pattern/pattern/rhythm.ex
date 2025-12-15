@@ -28,7 +28,7 @@ defmodule UzuPattern.Pattern.Rhythm do
     rhythm = Euclidean.rhythm(pulses, steps)
     step_size = 1.0 / steps
 
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       base_haps = Pattern.query(pattern, cycle)
 
       pulse_indices =
@@ -59,7 +59,7 @@ defmodule UzuPattern.Pattern.Rhythm do
     rhythm = Euclidean.rhythm(pulses, steps, offset)
     step_size = 1.0 / steps
 
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       base_haps = Pattern.query(pattern, cycle)
 
       pulse_indices =
@@ -99,7 +99,7 @@ defmodule UzuPattern.Pattern.Rhythm do
       when is_number(amount) and is_integer(n) and n > 0 do
     slice_size = 1.0 / n
 
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->

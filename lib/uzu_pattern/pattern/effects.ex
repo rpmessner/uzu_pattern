@@ -41,7 +41,7 @@ defmodule UzuPattern.Pattern.Effects do
   """
   def set_param(%Pattern{} = pattern, key, %Pattern{} = signal_pattern) do
     # Value is a signal - sample at each hap's onset time
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->
@@ -55,7 +55,7 @@ defmodule UzuPattern.Pattern.Effects do
 
   def set_param(%Pattern{} = pattern, key, value) do
     # Value is static - apply to all haps
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->

@@ -186,7 +186,7 @@ defmodule UzuPattern.Pattern.Harmony do
   def scale(pattern, scale_name) when is_binary(scale_name) do
     {harmony_scale_name, octave} = parse_scale_name(scale_name)
 
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(&apply_scale_to_hap(&1, harmony_scale_name, octave))
@@ -231,7 +231,7 @@ defmodule UzuPattern.Pattern.Harmony do
       # Cycle 1 (F7): F mixolydian scale
   """
   def scale(%Pattern{metadata: %{form_data: form_data}} = pattern) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       # Get chord at this cycle
       beat = rem(cycle * form_data.beats_per_cycle, form_data.length)
       chord = find_chord_at_beat(form_data.changes, beat)
@@ -282,7 +282,7 @@ defmodule UzuPattern.Pattern.Harmony do
   def octave(pattern, octave_value) when is_number(octave_value) do
     shift = (octave_value - 3) * 12
 
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(&shift_note_octave(&1, shift))
@@ -293,7 +293,7 @@ defmodule UzuPattern.Pattern.Harmony do
     # Parse octave pattern as mini-notation
     octave_pat = UzuParser.Grammar.parse(octave_pattern) |> UzuPattern.Interpreter.interpret()
 
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern_haps = Pattern.query(pattern, cycle)
       octave_haps = Pattern.query(octave_pat, cycle)
 

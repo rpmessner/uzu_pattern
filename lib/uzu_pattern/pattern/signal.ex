@@ -72,7 +72,7 @@ defmodule UzuPattern.Pattern.Signal do
   def signal(time_fn) when is_function(time_fn, 1) do
     # Store the time function in metadata so sample_at can use it
     pattern =
-      Pattern.new(fn cycle ->
+      Pattern.from_cycles(fn cycle ->
         value = time_fn.(cycle * 1.0)
 
         [Hap.continuous(%{begin: 0.0, end: 1.0}, %{value: value})]
@@ -269,7 +269,7 @@ defmodule UzuPattern.Pattern.Signal do
       [0.0, 0.25, 0.5, 0.75]
   """
   def segment(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       for i <- 0..(n - 1) do
         frac_time = i / n
         duration = 1 / n
@@ -294,7 +294,7 @@ defmodule UzuPattern.Pattern.Signal do
   Works on both discrete events and continuous signals.
   """
   def with_value(%Pattern{} = pattern, value_fn) when is_function(value_fn, 1) do
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       pattern
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->

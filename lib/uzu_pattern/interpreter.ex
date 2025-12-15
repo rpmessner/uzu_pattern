@@ -104,7 +104,7 @@ defmodule UzuPattern.Interpreter do
     patterns = Enum.map(children, &interpret_atom/1)
 
     # Random choice selects one pattern per cycle (using cycle as seed)
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       :rand.seed(:exsss, {cycle, cycle * 7, cycle * 13})
       index = :rand.uniform(length(patterns)) - 1
       pattern = Enum.at(patterns, index)
@@ -160,24 +160,52 @@ defmodule UzuPattern.Interpreter do
         end)
 
       # Build a custom query that handles weighted timing
-      Pattern.new(fn cycle ->
-        {haps, _} =
-          Enum.reduce(weighted_patterns, {[], 0.0}, fn {pattern, fraction}, {acc, offset} ->
-            # Query the pattern and rescale its haps to this slot
-            pattern_haps =
-              pattern
-              |> Pattern.query(cycle)
-              |> Enum.map(fn hap ->
-                # Transform whole and part timespans
-                new_whole = scale_and_offset_timespan(hap.whole, fraction, offset)
-                new_part = scale_and_offset_timespan(hap.part, fraction, offset)
-                %{hap | whole: new_whole, part: new_part}
-              end)
+      Pattern.new(fn span ->
+        # Split by cycles and process each cycle
+        UzuPattern.TimeSpan.span_cycles(span)
+        |> Enum.flat_map(fn cycle_span ->
+          cycle = UzuPattern.TimeSpan.cycle_of(cycle_span)
 
-            {acc ++ pattern_haps, offset + fraction}
-          end)
+          {haps, _} =
+            Enum.reduce(weighted_patterns, {[], 0.0}, fn {pattern, fraction}, {acc, offset} ->
+              # This slot occupies [cycle + offset, cycle + offset + fraction)
+              slot_begin = cycle + offset
+              slot_end = cycle + offset + fraction
+              slot_span = %{begin: slot_begin, end: slot_end}
 
-        haps
+              # Check if query span intersects this slot
+              case UzuPattern.TimeSpan.intersection(cycle_span, slot_span) do
+                nil ->
+                  {acc, offset + fraction}
+
+                intersected_span ->
+                  # Map the intersected span into the child pattern's time
+                  child_span = %{
+                    begin: cycle + (intersected_span.begin - slot_begin) / fraction,
+                    end: cycle + (intersected_span.end - slot_begin) / fraction
+                  }
+
+                  # Query the pattern and rescale its haps to this slot
+                  pattern_haps =
+                    pattern
+                    |> Pattern.query_span(child_span)
+                    |> Enum.map(fn hap ->
+                      # Transform whole and part timespans back to output time
+                      new_whole = scale_and_offset_timespan(hap.whole, fraction, slot_begin - cycle * fraction)
+                      new_part = scale_and_offset_timespan(hap.part, fraction, slot_begin - cycle * fraction)
+                      %{hap | whole: new_whole, part: new_part}
+                    end)
+                    |> Enum.filter(fn hap ->
+                      # Filter to only haps that intersect the query
+                      UzuPattern.TimeSpan.intersection(hap.part, cycle_span) != nil
+                    end)
+
+                  {acc ++ pattern_haps, offset + fraction}
+              end
+            end)
+
+          haps
+        end)
       end)
     end
   end
@@ -208,7 +236,14 @@ defmodule UzuPattern.Interpreter do
 
   defp get_weight(%{type: :rest}), do: 1.0
   defp get_weight(%{type: :elongation}), do: 0.0
-  defp get_weight(%{weight: w}) when is_number(w), do: w
+
+  # Handle replicate (!n) - each replica has weight 1, so total weight is n
+  # The parser sets weight: 1.0 as default, so we check replicate FIRST
+  defp get_weight(%{replicate: n}) when is_integer(n) and n > 0, do: n * 1.0
+
+  # Explicit weight from @ operator (but not the default 1.0)
+  defp get_weight(%{weight: w}) when is_number(w) and w != 1.0, do: w
+
   defp get_weight(_), do: 1.0
 
   # ============================================================================
@@ -313,7 +348,7 @@ defmodule UzuPattern.Interpreter do
     rhythm = Euclidean.rhythm(k, n, offset)
 
     # Create a pattern that plays only on hits
-    Pattern.new(fn cycle ->
+    Pattern.from_cycles(fn cycle ->
       base_haps = Pattern.query(pattern, cycle)
 
       rhythm
@@ -352,7 +387,7 @@ defmodule UzuPattern.Interpreter do
         items = extract_sequence_items(group)
         token_count = length(items)
 
-        Pattern.new(fn cycle ->
+        Pattern.from_cycles(fn cycle ->
           items
           |> Enum.with_index()
           |> Enum.flat_map(fn {item, idx} ->
