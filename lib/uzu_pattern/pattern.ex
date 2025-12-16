@@ -154,6 +154,64 @@ defmodule UzuPattern.Pattern do
   end
 
   @doc """
+  Transform the query timespan before querying the underlying pattern.
+
+  This is essential for compositional time transformations like early/late/fast/slow.
+  The function receives a time value and returns the transformed query time.
+
+  For example, `early(8)` uses:
+  - withQueryTime: t → t + 8 (query later in the source pattern)
+  - withHapTime: t → t - 8 (shift results back)
+
+  ## Examples
+
+      iex> p = Pattern.pure("bd")
+      iex> p = Pattern.with_query_time(p, fn t -> UzuPattern.Time.add(t, 1) end)
+      iex> # Querying cycle 0 now queries cycle 1 from underlying pattern
+  """
+  def with_query_time(%__MODULE__{query: query_fn}, time_fn) when is_function(time_fn, 1) do
+    new(fn span ->
+      transformed_span = %{
+        begin: time_fn.(span.begin),
+        end: time_fn.(span.end)
+      }
+
+      query_fn.(transformed_span)
+    end)
+  end
+
+  @doc """
+  Transform the timespans of all haps returned by pattern queries.
+
+  Applied after querying - transforms both `part` and `whole` timespans.
+  Used in combination with `with_query_time` for time transformations.
+
+  ## Examples
+
+      iex> p = Pattern.pure("bd")
+      iex> p = Pattern.with_hap_time(p, fn t -> UzuPattern.Time.sub(t, 1) end)
+      iex> # All hap times are shifted back by 1
+  """
+  def with_hap_time(%__MODULE__{query: query_fn}, time_fn) when is_function(time_fn, 1) do
+    new(fn span ->
+      query_fn.(span)
+      |> Enum.map(fn hap ->
+        %{
+          hap
+          | whole: transform_timespan(hap.whole, time_fn),
+            part: transform_timespan(hap.part, time_fn)
+        }
+      end)
+    end)
+  end
+
+  defp transform_timespan(nil, _time_fn), do: nil
+
+  defp transform_timespan(%{begin: b, end: e}, time_fn) do
+    %{begin: time_fn.(b), end: time_fn.(e)}
+  end
+
+  @doc """
   Get events for cycle 0 as raw Event structs.
 
   This is a convenience function for tests and simple use cases.
@@ -567,6 +625,9 @@ defmodule UzuPattern.Pattern do
   defdelegate compress(pattern, start_time, end_time), to: Time
   defdelegate zoom(pattern, start_time, end_time), to: Time
   defdelegate linger(pattern, fraction), to: Time
+  defdelegate inside(pattern, factor, func), to: Time
+  defdelegate outside(pattern, factor, func), to: Time
+  defdelegate within(pattern, start_time, end_time, func), to: Time
 
   # ============================================================================
   # Structure Modifiers (delegated to Pattern.Structure)
@@ -640,6 +701,7 @@ defmodule UzuPattern.Pattern do
   defdelegate square(), to: Signal
   defdelegate rand(), to: Signal
   defdelegate irand(n), to: Signal
+  defdelegate perlin(), to: Signal
 
   # Signal operations
   defdelegate range(pattern, min, max), to: Signal
@@ -714,6 +776,13 @@ defmodule UzuPattern.Pattern do
   """
   def query_span(%__MODULE__{query: query_fn}, %{begin: _, end: _} = span) do
     query_fn.(span)
+    |> Enum.flat_map(fn hap ->
+      # Clip hap's part to the query span (Strudel compatibility)
+      case TimeSpan.intersection(hap.part, span) do
+        nil -> []
+        clipped_part -> [%{hap | part: clipped_part}]
+      end
+    end)
   end
 
   def query_span(nil, _span), do: []
@@ -745,7 +814,7 @@ defmodule UzuPattern.Pattern do
 
   For absolute timing, use `query_arc/2` or `query_span/2` instead.
   """
-  def query(%__MODULE__{} = pattern, cycle) when is_integer(cycle) and cycle >= 0 do
+  def query(%__MODULE__{} = pattern, cycle) when is_integer(cycle) do
     span = TimeSpan.new(cycle, cycle + 1)
 
     query_span(pattern, span)
