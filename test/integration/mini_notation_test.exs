@@ -12,14 +12,24 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   alias UzuPattern.Hap
   alias UzuPattern.Pattern
+  alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   defp parse(str), do: UzuPattern.parse(str)
   defp parse_events(str), do: Pattern.query(parse(str), 0)
 
   # Strudel-style helpers
   defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
-  defp times(haps), do: Enum.map(haps, & &1.part.begin)
-  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
+
+  # Sort haps by begin time
+  defp sort_by_time(haps) do
+    Enum.sort(haps, fn a, b -> Time.lt?(a.part.begin, b.part.begin) end)
+  end
+
+  # Check if all haps start at the same time
+  defp all_same_time?(haps, expected) do
+    Enum.all?(haps, fn h -> Time.eq?(h.part.begin, expected) end)
+  end
 
   # ============================================================================
   # Whitespace Handling
@@ -149,10 +159,9 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
       sd = Enum.find(haps, &(Hap.sound(&1) == "sd"))
 
-      bd_dur = bd.part.end - bd.part.begin
-      sd_dur = sd.part.end - sd.part.begin
-      assert_in_delta bd_dur, 0.75, 0.01
-      assert_in_delta sd_dur, 0.25, 0.01
+      # bd@3 sd means bd gets 3/4, sd gets 1/4
+      assert Time.eq?(TimeSpan.duration(bd.part), Time.new(3, 4))
+      assert Time.eq?(TimeSpan.duration(sd.part), Time.new(1, 4))
     end
 
     test "probability on multiple elements" do
@@ -208,13 +217,13 @@ defmodule UzuPattern.Integration.MiniNotationTest do
     test "two-element chord" do
       haps = parse_events("[bd,sd]")
       assert length(haps) == 2
-      assert Enum.all?(times(haps), &(&1 == 0.0))
+      assert all_same_time?(haps, Time.zero())
     end
 
     test "three-element chord" do
       haps = parse_events("[c3,e3,g3]")
       assert length(haps) == 3
-      assert Enum.all?(times(haps), &(&1 == 0.0))
+      assert all_same_time?(haps, Time.zero())
     end
 
     test "chord with rest" do
@@ -315,15 +324,15 @@ defmodule UzuPattern.Integration.MiniNotationTest do
     test "alternation with subdivision and repeat" do
       pattern = parse("<[bd sd] [hh sd]>*2")
 
-      haps = Pattern.query(pattern, 0)
+      haps = sort_by_time(Pattern.query(pattern, 0))
       assert length(haps) == 4
       assert sounds(haps) == ["bd", "sd", "hh", "sd"]
 
       # Timing: each subdivision takes half a cycle
-      assert_in_delta Enum.at(times(haps), 0), 0.0, 0.01
-      assert_in_delta Enum.at(times(haps), 1), 0.25, 0.01
-      assert_in_delta Enum.at(times(haps), 2), 0.5, 0.01
-      assert_in_delta Enum.at(times(haps), 3), 0.75, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(haps, 3).part.begin, Time.new(3, 4))
     end
 
     test "alternation with slowed subdivisions - each pattern starts fresh" do
@@ -449,8 +458,8 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       assert length(haps) == 2
 
       bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
-      bd_dur = bd.part.end - bd.part.begin
-      assert_in_delta bd_dur, 0.666, 0.01
+      # bd _ sd: bd gets 2/3, sd gets 1/3
+      assert Time.eq?(TimeSpan.duration(bd.part), Time.new(2, 3))
     end
 
     test "multiple elongations" do
@@ -458,8 +467,8 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       assert length(haps) == 2
 
       bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
-      bd_dur = bd.part.end - bd.part.begin
-      assert_in_delta bd_dur, 0.8, 0.01
+      # bd _ _ _ sd: bd gets 4/5, sd gets 1/5
+      assert Time.eq?(TimeSpan.duration(bd.part), Time.new(4, 5))
     end
 
     test "elongation at start has no effect" do
@@ -474,8 +483,9 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       bd = Enum.find(haps, &(Hap.sound(&1) == "bd"))
       sd = Enum.find(haps, &(Hap.sound(&1) == "sd"))
 
-      assert_in_delta bd.part.end - bd.part.begin, 0.5, 0.01
-      assert_in_delta sd.part.end - sd.part.begin, 0.5, 0.01
+      # bd _ sd _: each gets 1/2
+      assert Time.eq?(TimeSpan.duration(bd.part), Time.half())
+      assert Time.eq?(TimeSpan.duration(sd.part), Time.half())
     end
   end
 
@@ -493,9 +503,11 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       haps1 = parse_events("bd(3,8,0)")
       haps2 = parse_events("bd(3,8,1)")
 
-      times1 = times(haps1)
-      times2 = times(haps2)
+      # Get begin times
+      times1 = Enum.map(haps1, & &1.part.begin)
+      times2 = Enum.map(haps2, & &1.part.begin)
 
+      # Different offsets should produce different timing
       assert times1 != times2
     end
 
@@ -678,9 +690,8 @@ defmodule UzuPattern.Integration.MiniNotationTest do
       haps_0 = Pattern.query(pattern, 0)
 
       bd = Enum.find(haps_0, &(Hap.sound(&1) == "bd"))
-      bd_dur = bd.part.end - bd.part.begin
-      # bd should take full cycle in cycle 0
-      assert_in_delta bd_dur, 1.0, 0.01
+      # bd@2 in an alternation means it takes the full cycle when it plays
+      assert Time.eq?(TimeSpan.duration(bd.part), Time.one())
     end
 
     test "multiple alternations in sequence" do

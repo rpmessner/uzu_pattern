@@ -45,6 +45,7 @@ defmodule UzuPattern.Pattern.Signal do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Hap
+  alias UzuPattern.Time
 
   # ============================================================================
   # Signal Constructor
@@ -75,7 +76,8 @@ defmodule UzuPattern.Pattern.Signal do
       Pattern.from_cycles(fn cycle ->
         value = time_fn.(cycle * 1.0)
 
-        [Hap.continuous(%{begin: 0.0, end: 1.0}, %{value: value})]
+        # Use exact Ratio times for the hap span
+        [Hap.continuous(%{begin: Time.zero(), end: Time.one()}, %{value: value})]
       end)
 
     %{pattern | metadata: Map.put(pattern.metadata, :time_fn, time_fn)}
@@ -265,21 +267,22 @@ defmodule UzuPattern.Pattern.Signal do
       iex> haps = Pattern.query(sig, 0)
       iex> length(haps)
       4
-      iex> Enum.map(haps, & &1.part.begin)
+      iex> Enum.map(haps, & Time.to_float(&1.part.begin))
       [0.0, 0.25, 0.5, 0.75]
   """
   def segment(%Pattern{} = pattern, n) when is_integer(n) and n > 0 do
     Pattern.from_cycles(fn cycle ->
       for i <- 0..(n - 1) do
-        frac_time = i / n
-        duration = 1 / n
+        # Use exact Ratio times
+        begin_time = Time.new(i, n)
+        end_time = Time.new(i + 1, n)
 
-        # Sample the signal at the exact fractional time
-        abs_time = cycle + frac_time
+        # Sample the signal at the exact fractional time (convert to float for waveform math)
+        abs_time = cycle + Time.to_float(begin_time)
         value = sample_at(pattern, abs_time)
 
         # Create a discrete hap (not continuous)
-        Hap.new(%{begin: frac_time, end: frac_time + duration}, %{value: value})
+        Hap.new(%{begin: begin_time, end: end_time}, %{value: value})
       end
     end)
   end
@@ -327,6 +330,11 @@ defmodule UzuPattern.Pattern.Signal do
     time_fn.(time)
   end
 
+  def sample_at(%Pattern{metadata: %{time_fn: time_fn}}, %Ratio{} = time) do
+    # Direct signal with Ratio - convert to float for continuous calculation
+    time_fn.(Time.to_float(time))
+  end
+
   def sample_at(%Pattern{} = pattern, time) when is_number(time) do
     # Transformed pattern - query at integer cycle and get the value
     cycle = trunc(time)
@@ -339,5 +347,10 @@ defmodule UzuPattern.Pattern.Signal do
       %Hap{value: %{value: v}} when not is_nil(v) -> v
       _ -> 0.0
     end
+  end
+
+  def sample_at(%Pattern{} = pattern, %Ratio{} = time) do
+    # Transformed pattern with Ratio - convert to float
+    sample_at(pattern, Time.to_float(time))
   end
 end

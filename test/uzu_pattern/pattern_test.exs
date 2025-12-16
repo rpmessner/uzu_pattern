@@ -9,13 +9,14 @@ defmodule UzuPattern.PatternTest do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Hap
+  alias UzuPattern.TimeSpan
 
   defp parse(str), do: UzuPattern.parse(str)
 
   # Helper to get sound from hap
   defp sound(hap), do: hap.value.s
-  defp time(hap), do: hap.part.begin
-  defp duration(hap), do: hap.part.end - hap.part.begin
+  defp time(hap), do: TimeSpan.begin_float(hap.part)
+  defp duration(hap), do: TimeSpan.duration_float(hap.part)
 
   # ============================================================================
   # Constructors
@@ -23,7 +24,7 @@ defmodule UzuPattern.PatternTest do
 
   describe "new/1 with query function" do
     test "creates pattern from query function" do
-      pattern = Pattern.new(fn _cycle -> [Hap.new(%{begin: 0.0, end: 1.0}, %{s: "bd"})] end)
+      pattern = Pattern.new(fn _cycle -> [Hap.new(TimeSpan.new(0, 1), %{s: "bd"})] end)
       haps = Pattern.events(pattern)
 
       assert length(haps) == 1

@@ -7,7 +7,6 @@ defmodule UzuPattern.Pattern.EffectsTest do
 
   use ExUnit.Case, async: true
 
-  alias UzuPattern.Hap
   alias UzuPattern.Pattern
 
   defp parse(str), do: UzuPattern.parse(str)

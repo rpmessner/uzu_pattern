@@ -72,8 +72,14 @@ defmodule UzuPattern.Hap do
         locations: [%{start: 0, end: 5}],
         tags: ["drums", "loop"]
       }
+
+  ## Rational Timing
+
+  All time values use rational numbers (Ratio) for exact arithmetic.
+  Use `onset_float/1` when sending to the audio scheduler.
   """
 
+  alias UzuPattern.Time
   alias UzuPattern.TimeSpan
 
   @type timespan :: TimeSpan.t()
@@ -86,7 +92,7 @@ defmodule UzuPattern.Hap do
         }
 
   defstruct whole: nil,
-            part: %{begin: 0.0, end: 1.0},
+            part: %{begin: Ratio.new(0), end: Ratio.new(1)},
             value: %{},
             context: %{locations: [], tags: []}
 
@@ -138,21 +144,31 @@ defmodule UzuPattern.Hap do
   def continuous?(%__MODULE__{whole: _}), do: false
 
   @doc """
-  Get the onset time (when to trigger the sound).
+  Get the onset time as a rational (when to trigger the sound).
 
   For discrete events, this is whole.begin.
   For continuous events, returns nil (no specific onset).
   """
-  @spec onset(t()) :: float() | nil
+  @spec onset(t()) :: Time.t() | nil
   def onset(%__MODULE__{whole: nil}), do: nil
   def onset(%__MODULE__{whole: %{begin: b}}), do: b
 
   @doc """
-  Get the duration of the whole event.
+  Get the onset time as a float for audio scheduling.
+
+  Use this at the boundary when sending events to Web Audio or SuperCollider.
+  Returns nil for continuous events.
+  """
+  @spec onset_float(t()) :: float() | nil
+  def onset_float(%__MODULE__{whole: nil}), do: nil
+  def onset_float(%__MODULE__{whole: %{begin: b}}), do: Time.to_float(b)
+
+  @doc """
+  Get the duration of the whole event as a rational.
 
   Returns nil for continuous events.
   """
-  @spec duration(t()) :: float() | nil
+  @spec duration(t()) :: Time.t() | nil
   def duration(%__MODULE__{whole: nil}), do: nil
   def duration(%__MODULE__{whole: whole}), do: TimeSpan.duration(whole)
 
@@ -270,7 +286,7 @@ defmodule UzuPattern.Hap do
   @doc """
   Shift both whole and part by an offset.
   """
-  @spec shift(t(), number()) :: t()
+  @spec shift(t(), Time.t() | integer()) :: t()
   def shift(%__MODULE__{whole: nil, part: part} = hap, offset) do
     %{hap | part: TimeSpan.shift(part, offset)}
   end
@@ -282,7 +298,7 @@ defmodule UzuPattern.Hap do
   @doc """
   Scale both whole and part by a factor.
   """
-  @spec scale(t(), number()) :: t()
+  @spec scale(t(), Time.t() | integer()) :: t()
   def scale(%__MODULE__{whole: nil, part: part} = hap, factor) do
     %{hap | part: TimeSpan.scale(part, factor)}
   end
@@ -309,12 +325,32 @@ defmodule UzuPattern.Hap do
   events multiple times when they span query boundaries.
 
   Returns false for continuous events (no onset).
+
+  Now uses exact rational comparison instead of float epsilon.
   """
   @spec has_onset?(t()) :: boolean()
   def has_onset?(%__MODULE__{whole: nil}), do: false
 
   def has_onset?(%__MODULE__{whole: %{begin: wb}, part: %{begin: pb}}) do
-    # Use small epsilon for float comparison
-    abs(wb - pb) < 1.0e-9
+    Time.eq?(wb, pb)
+  end
+
+  # ============================================================================
+  # Conversion for scheduler boundary
+  # ============================================================================
+
+  @doc """
+  Convert a hap to float-based timespans for audio scheduling.
+
+  Returns a new hap with float-based whole and part timespans.
+  Use this at the boundary when sending to Web Audio or SuperCollider.
+  """
+  @spec to_float(t()) :: t()
+  def to_float(%__MODULE__{whole: nil, part: part} = hap) do
+    %{hap | part: TimeSpan.to_float(part)}
+  end
+
+  def to_float(%__MODULE__{whole: whole, part: part} = hap) do
+    %{hap | whole: TimeSpan.to_float(whole), part: TimeSpan.to_float(part)}
   end
 end

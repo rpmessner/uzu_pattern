@@ -4,6 +4,12 @@ defmodule UzuPattern.Pattern.AlgebraTest do
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Algebra
   alias UzuPattern.TimeSpan
+  alias UzuPattern.Time
+
+  # Sort haps by part begin time using exact rational comparison
+  defp sort_by_time(haps) do
+    Enum.sort(haps, fn a, b -> Time.lt?(a.part.begin, b.part.begin) end)
+  end
 
   describe "fmap/2" do
     test "transforms hap values" do
@@ -36,10 +42,9 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       p = Pattern.fastcat([Pattern.pure("a"), Pattern.pure("b")])
       p = Algebra.fmap(p, fn v -> Map.put(v, :x, 1) end)
 
-      haps = Pattern.query(p, 0)
-      times = Enum.map(haps, & &1.part.begin)
-      assert_in_delta hd(times), 0.0, 0.001
-      assert_in_delta List.last(times), 0.5, 0.001
+      [h1, h2] = sort_by_time(Pattern.query(p, 0))
+      assert Time.eq?(h1.part.begin, Time.zero())
+      assert Time.eq?(h2.part.begin, Time.half())
     end
 
     test "is accessible via Pattern.fmap" do
@@ -80,8 +85,8 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       [hap] = Pattern.query(result, 0)
 
       # Both wholes are [0, 1), intersection is [0, 1)
-      assert hap.whole.begin == 0.0
-      assert hap.whole.end == 1.0
+      assert Time.eq?(hap.whole.begin, Time.zero())
+      assert Time.eq?(hap.whole.end, Time.one())
     end
 
     test "only produces output when parts intersect" do
@@ -159,11 +164,9 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       # Should get 2 haps with timing from funcs
       assert length(haps) == 2
 
-      [h1, h2] = Enum.sort_by(haps, & &1.part.begin)
-      assert_in_delta h1.part.begin, 0.0, 0.001
-      assert_in_delta h1.part.end, 0.5, 0.001
-      assert_in_delta h2.part.begin, 0.5, 0.001
-      assert_in_delta h2.part.end, 1.0, 0.001
+      [h1, h2] = sort_by_time(haps)
+      assert TimeSpan.eq?(h1.part, TimeSpan.new(0, {1, 2}))
+      assert TimeSpan.eq?(h2.part, TimeSpan.new({1, 2}, 1))
     end
 
     test "wholes come from function pattern" do
@@ -178,12 +181,10 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       result = Algebra.app_left(funcs, vals)
       haps = Pattern.query(result, 0)
 
-      [h1, h2] = Enum.sort_by(haps, & &1.part.begin)
+      [h1, h2] = sort_by_time(haps)
       # Wholes should be [0, 0.5) and [0.5, 1)
-      assert_in_delta h1.whole.begin, 0.0, 0.001
-      assert_in_delta h1.whole.end, 0.5, 0.001
-      assert_in_delta h2.whole.begin, 0.5, 0.001
-      assert_in_delta h2.whole.end, 1.0, 0.001
+      assert TimeSpan.eq?(h1.whole, TimeSpan.new(0, {1, 2}))
+      assert TimeSpan.eq?(h2.whole, TimeSpan.new({1, 2}, 1))
     end
   end
 
@@ -203,11 +204,11 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       # Should get 2 haps with timing from vals
       assert length(haps) == 2
 
-      [h1, h2] = Enum.sort_by(haps, & &1.part.begin)
+      [h1, h2] = sort_by_time(haps)
       assert h1.value.s == "a"
       assert h2.value.s == "b"
-      assert_in_delta h1.part.begin, 0.0, 0.001
-      assert_in_delta h2.part.begin, 0.5, 0.001
+      assert Time.eq?(h1.part.begin, Time.zero())
+      assert Time.eq?(h2.part.begin, Time.half())
     end
 
     test "wholes come from value pattern" do
@@ -220,12 +221,10 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       result = Algebra.app_right(funcs, vals)
       haps = Pattern.query(result, 0)
 
-      [h1, h2] = Enum.sort_by(haps, & &1.part.begin)
+      [h1, h2] = sort_by_time(haps)
       # Wholes should be [0, 0.5) and [0.5, 1)
-      assert_in_delta h1.whole.begin, 0.0, 0.001
-      assert_in_delta h1.whole.end, 0.5, 0.001
-      assert_in_delta h2.whole.begin, 0.5, 0.001
-      assert_in_delta h2.whole.end, 1.0, 0.001
+      assert TimeSpan.eq?(h1.whole, TimeSpan.new(0, {1, 2}))
+      assert TimeSpan.eq?(h2.whole, TimeSpan.new({1, 2}, 1))
     end
   end
 
@@ -317,8 +316,7 @@ defmodule UzuPattern.Pattern.AlgebraTest do
 
       [hap] = Pattern.query(result, 0)
       # Both outer and inner have whole [0, 1), intersection is [0, 1)
-      assert_in_delta hap.whole.begin, 0.0, 0.001
-      assert_in_delta hap.whole.end, 1.0, 0.001
+      assert TimeSpan.eq?(hap.whole, TimeSpan.new(0, 1))
     end
 
     test "works with varying inner patterns based on outer value" do
@@ -354,13 +352,11 @@ defmodule UzuPattern.Pattern.AlgebraTest do
         end)
 
       haps = Pattern.query(result, 0)
-      [h1, h2] = Enum.sort_by(haps, & &1.part.begin)
+      [h1, h2] = sort_by_time(haps)
 
       # Wholes should come from inner pattern
-      assert_in_delta h1.whole.begin, 0.0, 0.001
-      assert_in_delta h1.whole.end, 0.5, 0.001
-      assert_in_delta h2.whole.begin, 0.5, 0.001
-      assert_in_delta h2.whole.end, 1.0, 0.001
+      assert TimeSpan.eq?(h1.whole, TimeSpan.new(0, {1, 2}))
+      assert TimeSpan.eq?(h2.whole, TimeSpan.new({1, 2}, 1))
     end
 
     test "inner_join flattens pattern of patterns keeping inner wholes" do
@@ -389,13 +385,11 @@ defmodule UzuPattern.Pattern.AlgebraTest do
         end)
 
       haps = Pattern.query(result, 0)
-      [h1, h2] = Enum.sort_by(haps, & &1.part.begin)
+      [h1, h2] = sort_by_time(haps)
 
       # Wholes should come from outer pattern
-      assert_in_delta h1.whole.begin, 0.0, 0.001
-      assert_in_delta h1.whole.end, 0.5, 0.001
-      assert_in_delta h2.whole.begin, 0.5, 0.001
-      assert_in_delta h2.whole.end, 1.0, 0.001
+      assert TimeSpan.eq?(h1.whole, TimeSpan.new(0, {1, 2}))
+      assert TimeSpan.eq?(h2.whole, TimeSpan.new({1, 2}, 1))
     end
 
     test "outer_join flattens pattern of patterns keeping outer wholes" do
@@ -438,12 +432,12 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       sounds = Enum.map(haps, & &1.value.s)
       assert sounds == ["a", "b", "c", "d"]
 
-      # Check timing - each should be 0.25 duration
-      times = Enum.map(haps, & &1.part.begin) |> Enum.sort()
-      assert_in_delta Enum.at(times, 0), 0.0, 0.001
-      assert_in_delta Enum.at(times, 1), 0.25, 0.001
-      assert_in_delta Enum.at(times, 2), 0.5, 0.001
-      assert_in_delta Enum.at(times, 3), 0.75, 0.001
+      # Check timing - each should be 1/4 duration
+      sorted = sort_by_time(haps)
+      assert Time.eq?(Enum.at(sorted, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(sorted, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(sorted, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(sorted, 3).part.begin, Time.new(3, 4))
     end
 
     test "squeeze_join with alternating outer gives different inner counts" do
@@ -492,11 +486,11 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       assert length(haps) == 4
 
       # Check timing - first pair in [0, 0.5), second pair in [0.5, 1)
-      times = Enum.map(haps, & &1.part.begin) |> Enum.sort()
-      assert_in_delta Enum.at(times, 0), 0.0, 0.001
-      assert_in_delta Enum.at(times, 1), 0.25, 0.001
-      assert_in_delta Enum.at(times, 2), 0.5, 0.001
-      assert_in_delta Enum.at(times, 3), 0.75, 0.001
+      sorted = sort_by_time(haps)
+      assert Time.eq?(Enum.at(sorted, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(sorted, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(sorted, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(sorted, 3).part.begin, Time.new(3, 4))
     end
   end
 
@@ -538,35 +532,35 @@ defmodule UzuPattern.Pattern.AlgebraTest do
         ])
 
       # Focus it so one cycle fits into [0, 0.5)
-      focused = Algebra.focus_span(p, %{begin: 0.0, end: 0.5})
+      focused = Algebra.focus_span(p, TimeSpan.new(0, {1, 2}))
 
       # Query the focused span - this should return all 4 events scaled to fit [0, 0.5)
-      haps = Pattern.query_span(focused, %{begin: 0.0, end: 0.5})
+      haps = Pattern.query_span(focused, TimeSpan.new(0, {1, 2}))
 
       # Should get all 4 events within [0, 0.5)
       assert length(haps) == 4
 
-      times = Enum.map(haps, & &1.part.begin) |> Enum.sort()
-      # Each event should be 0.125 duration (0.5 / 4)
-      assert_in_delta Enum.at(times, 0), 0.0, 0.001
-      assert_in_delta Enum.at(times, 1), 0.125, 0.001
-      assert_in_delta Enum.at(times, 2), 0.25, 0.001
-      assert_in_delta Enum.at(times, 3), 0.375, 0.001
+      sorted = sort_by_time(haps)
+      # Each event should be 1/8 duration (1/2 / 4)
+      assert Time.eq?(Enum.at(sorted, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(sorted, 1).part.begin, Time.new(1, 8))
+      assert Time.eq?(Enum.at(sorted, 2).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(sorted, 3).part.begin, Time.new(3, 8))
     end
 
     test "focus_span at different offset" do
       p = Pattern.fastcat([Pattern.pure("a"), Pattern.pure("b")])
 
       # Focus into [0.5, 1.0)
-      focused = Algebra.focus_span(p, %{begin: 0.5, end: 1.0})
+      focused = Algebra.focus_span(p, TimeSpan.new({1, 2}, 1))
 
       # Query the focused span
-      haps = Pattern.query_span(focused, %{begin: 0.5, end: 1.0})
+      haps = Pattern.query_span(focused, TimeSpan.new({1, 2}, 1))
       assert length(haps) == 2
 
-      times = Enum.map(haps, & &1.part.begin) |> Enum.sort()
-      assert_in_delta Enum.at(times, 0), 0.5, 0.001
-      assert_in_delta Enum.at(times, 1), 0.75, 0.001
+      sorted = sort_by_time(haps)
+      assert Time.eq?(Enum.at(sorted, 0).part.begin, Time.half())
+      assert Time.eq?(Enum.at(sorted, 1).part.begin, Time.new(3, 4))
     end
 
     test "querying full cycle after focus gives scaled events" do
@@ -574,7 +568,7 @@ defmodule UzuPattern.Pattern.AlgebraTest do
       p = Pattern.fastcat([Pattern.pure("a"), Pattern.pure("b")])
 
       # Focus it so one cycle fits into [0, 0.5)
-      focused = Algebra.focus_span(p, %{begin: 0.0, end: 0.5})
+      focused = Algebra.focus_span(p, TimeSpan.new(0, {1, 2}))
 
       # Query full cycle [0, 1) - this queries 2 cycles of original pattern
       haps = Pattern.query(focused, 0)

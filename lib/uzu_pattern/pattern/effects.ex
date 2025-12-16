@@ -25,6 +25,7 @@ defmodule UzuPattern.Pattern.Effects do
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Signal
   alias UzuPattern.Hap
+  alias UzuPattern.Time
 
   @doc """
   Set a parameter on all events in the pattern.
@@ -47,7 +48,8 @@ defmodule UzuPattern.Pattern.Effects do
       |> Enum.map(fn hap ->
         # Sample the signal at this hap's absolute time
         onset = Hap.onset(hap) || hap.part.begin
-        value = Signal.sample_at(signal_pattern, cycle + onset)
+        absolute_time = Time.add(cycle, onset)
+        value = Signal.sample_at(signal_pattern, absolute_time)
         %{hap | value: Map.put(hap.value, key, value)}
       end)
     end)

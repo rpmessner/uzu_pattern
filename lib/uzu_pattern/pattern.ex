@@ -49,8 +49,10 @@ defmodule UzuPattern.Pattern do
   """
 
   alias UzuPattern.Hap
+  alias UzuPattern.Time
   alias UzuPattern.TimeSpan
   alias UzuPattern.Pattern.{Starters, Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony, Algebra}
+  alias UzuPattern.Time, as: T
 
   # Query function now takes a TimeSpan and returns haps for that span.
   # This enables pattern algebra operations that need to query arbitrary time ranges.
@@ -147,7 +149,8 @@ defmodule UzuPattern.Pattern do
   defp shift_timespan(nil, _offset), do: nil
 
   defp shift_timespan(%{begin: b, end: e}, offset) do
-    %{begin: b + offset, end: e + offset}
+    o = T.ensure(offset)
+    %{begin: T.add(b, o), end: T.add(e, o)}
   end
 
   @doc """
@@ -196,7 +199,7 @@ defmodule UzuPattern.Pattern do
       |> Enum.flat_map(fn cycle_span ->
         cycle = TimeSpan.cycle_of(cycle_span)
         # The whole event spans [cycle, cycle+1)
-        whole = %{begin: cycle * 1.0, end: (cycle + 1) * 1.0}
+        whole = TimeSpan.new(cycle, cycle + 1)
         # The part is clipped to the query span
         case TimeSpan.intersection(whole, cycle_span) do
           nil -> []
@@ -381,9 +384,12 @@ defmodule UzuPattern.Pattern do
 
         # Query the pattern with a span in its local time
         # Map [cycle, cycle+1) to [local_cycle, local_cycle+1)
+        cycle_time = T.new(cycle)
+        local_cycle_time = T.new(local_cycle)
+
         local_span = %{
-          begin: local_cycle + (cycle_span.begin - cycle),
-          end: local_cycle + (cycle_span.end - cycle)
+          begin: T.add(local_cycle_time, T.sub(cycle_span.begin, cycle_time)),
+          end: T.add(local_cycle_time, T.sub(cycle_span.end, cycle_time))
         }
 
         query_span(pattern, local_span)
@@ -424,20 +430,21 @@ defmodule UzuPattern.Pattern do
 
   def fastcat(patterns) when is_list(patterns) do
     n = length(patterns)
-    step = 1.0 / n
+    step = T.new(1, n)
 
     new(fn span ->
       # Split by cycle first
       TimeSpan.span_cycles(span)
       |> Enum.flat_map(fn cycle_span ->
         cycle = TimeSpan.cycle_of(cycle_span)
+        cycle_time = T.new(cycle)
 
         patterns
         |> Enum.with_index()
         |> Enum.flat_map(fn {pattern, index} ->
           # This pattern occupies [cycle + index*step, cycle + (index+1)*step)
-          slot_begin = cycle + index * step
-          slot_end = cycle + (index + 1) * step
+          slot_begin = T.add(cycle_time, T.mult(T.new(index), step))
+          slot_end = T.add(cycle_time, T.mult(T.new(index + 1), step))
           slot_span = %{begin: slot_begin, end: slot_end}
 
           # Check if query span intersects this slot
@@ -449,14 +456,16 @@ defmodule UzuPattern.Pattern do
               # Map the intersected span into the child pattern's time
               # The slot maps to a full cycle in the child pattern
               child_span = %{
-                begin: cycle + (intersected_span.begin - slot_begin) / step,
-                end: cycle + (intersected_span.end - slot_begin) / step
+                begin: T.add(cycle_time, T.divide(T.sub(intersected_span.begin, slot_begin), step)),
+                end: T.add(cycle_time, T.divide(T.sub(intersected_span.end, slot_begin), step))
               }
 
               query_span(pattern, child_span)
               |> Enum.map(fn hap ->
                 # Scale and shift hap from child time back to output time
-                scale_hap(hap, step, slot_begin - cycle * step)
+                # offset = slot_begin - cycle * step
+                offset = T.sub(slot_begin, T.mult(cycle_time, step))
+                scale_hap(hap, step, offset)
               end)
               |> Enum.filter(fn hap ->
                 # Filter to only haps that intersect the query
@@ -480,7 +489,9 @@ defmodule UzuPattern.Pattern do
   defp scale_and_offset_timespan(nil, _scale, _offset), do: nil
 
   defp scale_and_offset_timespan(%{begin: b, end: e}, scale, offset) do
-    %{begin: offset + b * scale, end: offset + e * scale}
+    s = T.ensure(scale)
+    o = T.ensure(offset)
+    %{begin: T.add(o, T.mult(b, s)), end: T.add(o, T.mult(e, s))}
   end
 
   @doc """
@@ -787,8 +798,9 @@ defmodule UzuPattern.Pattern do
   defp timespan_to_json(nil, _cycle), do: nil
 
   defp timespan_to_json(%{begin: b, end: e}, cycle) do
-    # Normalize to relative time within cycle (0.0-1.0)
-    %{begin: b - cycle, end: e - cycle}
+    # Normalize to relative time within cycle (0.0-1.0) and convert to float
+    cycle_time = T.new(cycle)
+    %{begin: T.to_float(T.sub(b, cycle_time)), end: T.to_float(T.sub(e, cycle_time))}
   end
 
   # ============================================================================

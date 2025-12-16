@@ -18,6 +18,8 @@ defmodule UzuPattern.Interpreter do
   alias UzuPattern.Pattern
   alias UzuPattern.Euclidean
   alias UzuPattern.Hap
+  alias UzuPattern.Time, as: T
+  alias UzuPattern.TimeSpan
 
   @doc """
   Interpret an AST into a Pattern.
@@ -140,21 +142,21 @@ defmodule UzuPattern.Interpreter do
     # First, process elongations to adjust weights
     processed = process_elongations(items)
 
-    # Calculate total weight
+    # Calculate total weight as integer (weights are always integers from parsing)
     total_weight =
       processed
-      |> Enum.map(&get_weight/1)
+      |> Enum.map(&get_weight_int/1)
       |> Enum.sum()
 
     if total_weight == 0 do
       Pattern.silence()
     else
-      # Convert to patterns with their weight fractions
+      # Convert to patterns with their weight fractions as rational numbers
       weighted_patterns =
         processed
         |> Enum.map(fn item ->
-          weight = get_weight(item)
-          fraction = weight / total_weight
+          weight = get_weight_int(item)
+          fraction = T.new(weight, total_weight)
           pattern = interpret_item(item)
           {pattern, fraction}
         end)
@@ -162,45 +164,49 @@ defmodule UzuPattern.Interpreter do
       # Build a custom query that handles weighted timing
       Pattern.new(fn span ->
         # Split by cycles and process each cycle
-        UzuPattern.TimeSpan.span_cycles(span)
+        TimeSpan.span_cycles(span)
         |> Enum.flat_map(fn cycle_span ->
-          cycle = UzuPattern.TimeSpan.cycle_of(cycle_span)
+          cycle = TimeSpan.cycle_of(cycle_span)
+          cycle_time = T.new(cycle)
 
           {haps, _} =
-            Enum.reduce(weighted_patterns, {[], 0.0}, fn {pattern, fraction}, {acc, offset} ->
+            Enum.reduce(weighted_patterns, {[], T.zero()}, fn {pattern, fraction}, {acc, offset} ->
               # This slot occupies [cycle + offset, cycle + offset + fraction)
-              slot_begin = cycle + offset
-              slot_end = cycle + offset + fraction
+              slot_begin = T.add(cycle_time, offset)
+              slot_end = T.add(slot_begin, fraction)
               slot_span = %{begin: slot_begin, end: slot_end}
 
               # Check if query span intersects this slot
-              case UzuPattern.TimeSpan.intersection(cycle_span, slot_span) do
+              case TimeSpan.intersection(cycle_span, slot_span) do
                 nil ->
-                  {acc, offset + fraction}
+                  {acc, T.add(offset, fraction)}
 
                 intersected_span ->
                   # Map the intersected span into the child pattern's time
                   child_span = %{
-                    begin: cycle + (intersected_span.begin - slot_begin) / fraction,
-                    end: cycle + (intersected_span.end - slot_begin) / fraction
+                    begin: T.add(cycle_time, T.divide(T.sub(intersected_span.begin, slot_begin), fraction)),
+                    end: T.add(cycle_time, T.divide(T.sub(intersected_span.end, slot_begin), fraction))
                   }
 
                   # Query the pattern and rescale its haps to this slot
+                  # offset for scaling = slot_begin - cycle * fraction
+                  scale_offset = T.sub(slot_begin, T.mult(cycle_time, fraction))
+
                   pattern_haps =
                     pattern
                     |> Pattern.query_span(child_span)
                     |> Enum.map(fn hap ->
                       # Transform whole and part timespans back to output time
-                      new_whole = scale_and_offset_timespan(hap.whole, fraction, slot_begin - cycle * fraction)
-                      new_part = scale_and_offset_timespan(hap.part, fraction, slot_begin - cycle * fraction)
+                      new_whole = scale_and_offset_timespan(hap.whole, fraction, scale_offset)
+                      new_part = scale_and_offset_timespan(hap.part, fraction, scale_offset)
                       %{hap | whole: new_whole, part: new_part}
                     end)
                     |> Enum.filter(fn hap ->
                       # Filter to only haps that intersect the query
-                      UzuPattern.TimeSpan.intersection(hap.part, cycle_span) != nil
+                      TimeSpan.intersection(hap.part, cycle_span) != nil
                     end)
 
-                  {acc ++ pattern_haps, offset + fraction}
+                  {acc ++ pattern_haps, T.add(offset, fraction)}
               end
             end)
 
@@ -234,17 +240,17 @@ defmodule UzuPattern.Interpreter do
     result
   end
 
-  defp get_weight(%{type: :rest}), do: 1.0
-  defp get_weight(%{type: :elongation}), do: 0.0
+  # Integer weight functions for rational arithmetic
+  defp get_weight_int(%{type: :rest}), do: 1
+  defp get_weight_int(%{type: :elongation}), do: 0
 
   # Handle replicate (!n) - each replica has weight 1, so total weight is n
-  # The parser sets weight: 1.0 as default, so we check replicate FIRST
-  defp get_weight(%{replicate: n}) when is_integer(n) and n > 0, do: n * 1.0
+  defp get_weight_int(%{replicate: n}) when is_integer(n) and n > 0, do: n
 
-  # Explicit weight from @ operator (but not the default 1.0)
-  defp get_weight(%{weight: w}) when is_number(w) and w != 1.0, do: w
+  # Explicit weight from @ operator
+  defp get_weight_int(%{weight: w}) when is_number(w), do: trunc(w)
 
-  defp get_weight(_), do: 1.0
+  defp get_weight_int(_), do: 1
 
   # ============================================================================
   # Item Interpretation
@@ -346,6 +352,7 @@ defmodule UzuPattern.Interpreter do
 
     # Generate euclidean rhythm
     rhythm = Euclidean.rhythm(k, n, offset)
+    step = T.new(1, n)
 
     # Create a pattern that plays only on hits
     Pattern.from_cycles(fn cycle ->
@@ -355,11 +362,11 @@ defmodule UzuPattern.Interpreter do
       |> Enum.with_index()
       |> Enum.flat_map(fn {hit, i} ->
         if hit == 1 do
-          step = 1.0 / n
-          time = i * step
+          time = T.new(i, n)
+          time_end = T.add(time, step)
 
           Enum.map(base_haps, fn hap ->
-            set_hap_timespan(hap, time, time + step)
+            set_hap_timespan(hap, time, time_end)
           end)
         else
           []
@@ -380,7 +387,7 @@ defmodule UzuPattern.Interpreter do
   end
 
   defp interpret_polymetric_stepped(groups, steps) do
-    step_duration = 1.0 / steps
+    step_duration = T.new(1, steps)
 
     patterns =
       Enum.map(groups, fn group ->
@@ -391,13 +398,13 @@ defmodule UzuPattern.Interpreter do
           items
           |> Enum.with_index()
           |> Enum.flat_map(fn {item, idx} ->
-            time_offset = idx / token_count
+            time_offset = T.new(idx, token_count)
             pattern = interpret_item(item)
 
             pattern
             |> Pattern.query(cycle)
             |> Enum.map(fn hap ->
-              set_hap_timespan(hap, time_offset, time_offset + step_duration)
+              set_hap_timespan(hap, time_offset, T.add(time_offset, step_duration))
             end)
           end)
         end)
@@ -433,16 +440,20 @@ defmodule UzuPattern.Interpreter do
   # Hap Timespan Helpers
   # ============================================================================
 
-  # Scale and offset a timespan (works for both whole and part)
+  # Scale and offset a timespan (works for both whole and part) using rational arithmetic
   defp scale_and_offset_timespan(nil, _fraction, _offset), do: nil
 
   defp scale_and_offset_timespan(%{begin: b, end: e}, fraction, offset) do
-    %{begin: offset + b * fraction, end: offset + (b + (e - b)) * fraction}
+    # new_begin = offset + b * fraction
+    # new_end = offset + e * fraction (simplified from offset + (b + (e-b)) * fraction)
+    f = T.ensure(fraction)
+    o = T.ensure(offset)
+    %{begin: T.add(o, T.mult(b, f)), end: T.add(o, T.mult(e, f))}
   end
 
-  # Set a hap's timespan to specific begin/end values
+  # Set a hap's timespan to specific begin/end values (accepts rational or integer times)
   defp set_hap_timespan(%Hap{} = hap, begin_time, end_time) do
-    timespan = %{begin: begin_time, end: end_time}
+    timespan = TimeSpan.new(begin_time, end_time)
     %{hap | whole: timespan, part: timespan}
   end
 end

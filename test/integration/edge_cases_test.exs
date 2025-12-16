@@ -12,13 +12,18 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
 
   alias UzuPattern.Hap
   alias UzuPattern.Pattern
+  alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   defp parse(str), do: UzuPattern.parse(str)
 
   # Strudel-style helpers
   defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
-  defp times(haps), do: Enum.map(haps, & &1.part.begin)
-  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
+
+  # Sort haps by begin time
+  defp sort_by_time(haps) do
+    Enum.sort(haps, fn a, b -> Time.lt?(a.part.begin, b.part.begin) end)
+  end
 
   # ============================================================================
   # Time Boundaries
@@ -28,14 +33,15 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
     test "events at exactly 0.0 are included" do
       pattern = parse("bd")
       [hap] = Pattern.query(pattern, 0)
-      assert hap.part.begin == 0.0
+      assert Time.eq?(hap.part.begin, Time.zero())
     end
 
     test "all times within cycle bounds [0, 1)" do
       haps = parse("bd sd hh cp oh rim") |> Pattern.events()
 
       Enum.each(haps, fn hap ->
-        assert hap.part.begin >= 0.0 and hap.part.begin < 1.0
+        assert Time.gte?(hap.part.begin, Time.zero())
+        assert Time.lt?(hap.part.begin, Time.one())
       end)
     end
   end
@@ -44,27 +50,32 @@ defmodule UzuPattern.Integration.EdgeCasesTest do
   # Floating Point Precision
   # ============================================================================
 
-  describe "floating point precision" do
-    test "times remain accurate after multiple transformations" do
+  describe "exact rational arithmetic" do
+    test "times remain exact after multiple transformations" do
       pattern =
         parse("bd sd hh cp")
         |> Pattern.fast(3)
         |> Pattern.slow(3)
 
-      haps = Pattern.query(pattern, 0)
-      hap_times = times(haps)
+      haps = sort_by_time(Pattern.query(pattern, 0))
 
-      assert_in_delta Enum.at(hap_times, 0), 0.0, 0.001
-      assert_in_delta Enum.at(hap_times, 1), 0.25, 0.001
-      assert_in_delta Enum.at(hap_times, 2), 0.5, 0.001
-      assert_in_delta Enum.at(hap_times, 3), 0.75, 0.001
+      # With exact rational arithmetic, fast(3) |> slow(3) should return exact values
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(haps, 3).part.begin, Time.new(3, 4))
     end
 
-    test "durations sum to approximately 1.0" do
+    test "durations sum to exactly 1" do
       pattern = parse("bd sd hh cp")
       haps = Pattern.query(pattern, 0)
-      total_duration = Enum.reduce(durations(haps), 0.0, &(&1 + &2))
-      assert_in_delta total_duration, 1.0, 0.001
+
+      total_duration =
+        Enum.reduce(haps, Time.zero(), fn hap, acc ->
+          Time.add(acc, TimeSpan.duration(hap.part))
+        end)
+
+      assert Time.eq?(total_duration, Time.one())
     end
   end
 

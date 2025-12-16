@@ -14,6 +14,7 @@ defmodule UzuPattern.Pattern.Conditional do
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Time
   alias UzuPattern.Hap
+  alias UzuPattern.Time, as: T
 
   @doc """
   Apply a function every n cycles.
@@ -107,7 +108,9 @@ defmodule UzuPattern.Pattern.Conditional do
       if rotation == 0 do
         Pattern.query(pattern, cycle)
       else
-        pattern |> Time.early(rotation / n) |> Pattern.query(cycle)
+        # Use rational fraction for exact rotation
+        rotation_frac = T.new(rotation, n)
+        pattern |> Time.early(rotation_frac) |> Pattern.query(cycle)
       end
     end)
   end
@@ -125,7 +128,9 @@ defmodule UzuPattern.Pattern.Conditional do
         Pattern.query(pattern, cycle)
       else
         backward_rotation = n - rotation
-        pattern |> Time.early(backward_rotation / n) |> Pattern.query(cycle)
+        # Use rational fraction for exact rotation
+        rotation_frac = T.new(backward_rotation, n)
+        pattern |> Time.early(rotation_frac) |> Pattern.query(cycle)
       end
     end)
   end
@@ -175,15 +180,15 @@ defmodule UzuPattern.Pattern.Conditional do
       when is_integer(n) and n > 0 and is_function(fun, 1) do
     Pattern.from_cycles(fn cycle ->
       chunk_index = rem(cycle, n)
-      chunk_start = chunk_index / n
-      chunk_end = (chunk_index + 1) / n
+      chunk_start = T.new(chunk_index, n)
+      chunk_end = T.new(chunk_index + 1, n)
 
       haps = Pattern.query(pattern, cycle)
 
       Enum.map(haps, fn hap ->
         onset = Hap.onset(hap) || hap.part.begin
 
-        if onset >= chunk_start and onset < chunk_end do
+        if T.gte?(onset, chunk_start) and T.lt?(onset, chunk_end) do
           temp_pattern = Pattern.from_haps([hap])
 
           case Pattern.query(fun.(temp_pattern), cycle) do
@@ -204,15 +209,15 @@ defmodule UzuPattern.Pattern.Conditional do
       when is_integer(n) and n > 0 and is_function(fun, 1) do
     Pattern.from_cycles(fn cycle ->
       chunk_index = n - 1 - rem(cycle, n)
-      chunk_start = chunk_index / n
-      chunk_end = (chunk_index + 1) / n
+      chunk_start = T.new(chunk_index, n)
+      chunk_end = T.new(chunk_index + 1, n)
 
       haps = Pattern.query(pattern, cycle)
 
       Enum.map(haps, fn hap ->
         onset = Hap.onset(hap) || hap.part.begin
 
-        if onset >= chunk_start and onset < chunk_end do
+        if T.gte?(onset, chunk_start) and T.lt?(onset, chunk_end) do
           temp_pattern = Pattern.from_haps([hap])
 
           case Pattern.query(fun.(temp_pattern), cycle) do

@@ -1,6 +1,6 @@
 defmodule UzuPattern.TimeSpan do
   @moduledoc """
-  A time interval with begin and end points.
+  A time interval with begin and end points using rational arithmetic.
 
   TimeSpan is the foundation for Strudel-compatible timing. It represents
   a half-open interval [begin, end) - includes begin, excludes end.
@@ -16,28 +16,51 @@ defmodule UzuPattern.TimeSpan do
   - whole: [0.8, 1.2) - the true event extent
   - part: [0.8, 1.0) - clipped to your query
 
-  ## Note on Precision
+  ## Rational Precision
 
-  Strudel uses arbitrary-precision fractions for exact arithmetic.
-  We use floats for simplicity. This may accumulate errors over very
-  long patterns - we can switch to Ratio/Decimal later if needed.
+  TimeSpan uses rational numbers (Ratio) for exact arithmetic.
+  This eliminates floating-point drift in divided patterns:
+
+      # With floats (problematic):
+      1/3 + 1/3 + 1/3 = 0.9999... (not exactly 1)
+
+      # With rationals (exact):
+      Time.new(1,3) + Time.new(1,3) + Time.new(1,3) = 1/1
+
+  This ensures patterns like `fast(3) |> slow(3)` return exactly to
+  their original timing.
   """
 
-  @type t :: %{begin: float(), end: float()}
+  alias UzuPattern.Time
+
+  @type t :: %{begin: Time.t(), end: Time.t()}
 
   @doc """
   Create a new timespan from begin to end.
+
+  Accepts integers, Ratio structs, or {numerator, denominator} tuples.
+
+  ## Examples
+
+      iex> TimeSpan.new(0, 1)
+      %{begin: %Ratio{...}, end: %Ratio{...}}
+
+      iex> TimeSpan.new(Time.new(1, 4), Time.new(1, 2))
+      %{begin: %Ratio{numerator: 1, denominator: 4}, ...}
   """
-  @spec new(number(), number()) :: t()
+  @spec new(Time.t() | integer() | {integer(), integer()}, Time.t() | integer() | {integer(), integer()}) :: t()
   def new(begin_time, end_time) do
-    %{begin: begin_time / 1, end: end_time / 1}
+    %{
+      begin: Time.ensure(begin_time),
+      end: Time.ensure(end_time)
+    }
   end
 
   @doc """
   Duration of the timespan (end - begin).
   """
-  @spec duration(t()) :: float()
-  def duration(%{begin: b, end: e}), do: e - b
+  @spec duration(t()) :: Time.t()
+  def duration(%{begin: b, end: e}), do: Time.sub(e, b)
 
   @doc """
   Midpoint of the timespan.
@@ -45,8 +68,10 @@ defmodule UzuPattern.TimeSpan do
   Useful for sampling continuous values - take the value at the middle
   of the query window.
   """
-  @spec midpoint(t()) :: float()
-  def midpoint(%{begin: b, end: e}), do: (b + e) / 2
+  @spec midpoint(t()) :: Time.t()
+  def midpoint(%{begin: b, end: e}) do
+    Time.divide(Time.add(b, e), 2)
+  end
 
   @doc """
   Returns the intersection of two timespans, or nil if they don't overlap.
@@ -55,10 +80,10 @@ defmodule UzuPattern.TimeSpan do
   """
   @spec intersection(t(), t()) :: t() | nil
   def intersection(%{begin: b1, end: e1}, %{begin: b2, end: e2}) do
-    new_begin = max(b1, b2)
-    new_end = min(e1, e2)
+    new_begin = Time.max(b1, b2)
+    new_end = Time.min(e1, e2)
 
-    if new_begin < new_end do
+    if Time.lt?(new_begin, new_end) do
       %{begin: new_begin, end: new_end}
     else
       nil
@@ -78,27 +103,40 @@ defmodule UzuPattern.TimeSpan do
   - [2.0, 2.3) in cycle 2
   """
   @spec span_cycles(t()) :: [t()]
-  def span_cycles(%{begin: b, end: e}) when b >= e, do: []
-
   def span_cycles(%{begin: b, end: e}) do
-    # Find the next cycle boundary after begin
-    next_boundary = Float.floor(b) + 1.0
-
-    if next_boundary >= e do
-      # Entire span is within one cycle
-      [%{begin: b, end: e}]
+    if Time.gte?(b, e) do
+      []
     else
-      # Split at boundary and recurse
-      [%{begin: b, end: next_boundary} | span_cycles(%{begin: next_boundary, end: e})]
+      do_span_cycles(b, e, [])
+    end
+  end
+
+  defp do_span_cycles(begin_time, end_time, acc) do
+    if Time.gte?(begin_time, end_time) do
+      Enum.reverse(acc)
+    else
+      next = Time.next_sam(begin_time)
+      span_end = Time.min(next, end_time)
+      span = %{begin: begin_time, end: span_end}
+      do_span_cycles(next, end_time, [span | acc])
     end
   end
 
   @doc """
   Check if a timespan contains a point (half-open: includes begin, excludes end).
   """
-  @spec contains?(t(), number()) :: boolean()
+  @spec contains?(t(), Time.t()) :: boolean()
   def contains?(%{begin: b, end: e}, point) do
-    point >= b and point < e
+    p = Time.ensure(point)
+    Time.gte?(p, b) and Time.lt?(p, e)
+  end
+
+  @doc """
+  Check if two timespans are equal (same begin and end).
+  """
+  @spec eq?(t(), t()) :: boolean()
+  def eq?(%{begin: b1, end: e1}, %{begin: b2, end: e2}) do
+    Time.eq?(b1, b2) and Time.eq?(e1, e2)
   end
 
   @doc """
@@ -106,22 +144,86 @@ defmodule UzuPattern.TimeSpan do
   """
   @spec cycle_of(t()) :: integer()
   def cycle_of(%{begin: b}) do
-    trunc(Float.floor(b))
+    Time.cycle_of(b)
   end
 
   @doc """
   Shift a timespan by an offset.
   """
-  @spec shift(t(), number()) :: t()
+  @spec shift(t(), Time.t() | integer()) :: t()
   def shift(%{begin: b, end: e}, offset) do
-    %{begin: b + offset, end: e + offset}
+    o = Time.ensure(offset)
+    %{begin: Time.add(b, o), end: Time.add(e, o)}
   end
 
   @doc """
   Scale a timespan by a factor around the origin.
   """
-  @spec scale(t(), number()) :: t()
+  @spec scale(t(), Time.t() | integer()) :: t()
   def scale(%{begin: b, end: e}, factor) do
-    %{begin: b * factor, end: e * factor}
+    f = Time.ensure(factor)
+    %{begin: Time.mult(b, f), end: Time.mult(e, f)}
+  end
+
+  @doc """
+  Create a timespan for a whole cycle.
+
+  ## Examples
+
+      iex> TimeSpan.whole_cycle(2)
+      %{begin: Time.new(2), end: Time.new(3)}
+  """
+  @spec whole_cycle(integer()) :: t()
+  def whole_cycle(cycle) when is_integer(cycle) do
+    new(cycle, cycle + 1)
+  end
+
+  # ============================================================================
+  # Conversion helpers for scheduler boundary
+  # ============================================================================
+
+  @doc """
+  Convert a timespan to float values for audio scheduling.
+
+  Use this at the boundary when sending events to Web Audio or SuperCollider.
+  """
+  @spec to_float(t()) :: %{begin: float(), end: float()}
+  def to_float(%{begin: b, end: e}) do
+    %{begin: Time.to_float(b), end: Time.to_float(e)}
+  end
+
+  @doc """
+  Convert a timespan to a float map, normalizing to cycle-relative time.
+
+  This subtracts the cycle offset so times are in [0, 1) range.
+  """
+  @spec to_float_relative(t(), integer()) :: %{begin: float(), end: float()}
+  def to_float_relative(%{begin: b, end: e}, cycle) do
+    offset = Time.new(cycle)
+
+    %{
+      begin: Time.to_float(Time.sub(b, offset)),
+      end: Time.to_float(Time.sub(e, offset))
+    }
+  end
+
+  @doc """
+  Get begin time as float.
+  """
+  @spec begin_float(t()) :: float()
+  def begin_float(%{begin: b}), do: Time.to_float(b)
+
+  @doc """
+  Get end time as float.
+  """
+  @spec end_float(t()) :: float()
+  def end_float(%{end: e}), do: Time.to_float(e)
+
+  @doc """
+  Get duration as float.
+  """
+  @spec duration_float(t()) :: float()
+  def duration_float(%{begin: b, end: e}) do
+    Time.to_float(Time.sub(e, b))
   end
 end

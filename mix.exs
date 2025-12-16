@@ -50,6 +50,9 @@ defmodule UzuPattern.MixProject do
 
       # Jazz standards chord progressions (Real Book data)
       {:real_book, path: "../real_book_ex"},
+
+      # Rational numbers for exact time arithmetic
+      {:ratio, "~> 4.0"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

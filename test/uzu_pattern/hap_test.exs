@@ -3,6 +3,7 @@ defmodule UzuPattern.HapTest do
 
   alias UzuPattern.Hap
   alias UzuPattern.TimeSpan
+  alias UzuPattern.Time
 
   describe "new/3" do
     test "creates discrete hap with whole and part equal" do
@@ -52,7 +53,7 @@ defmodule UzuPattern.HapTest do
   describe "onset/1" do
     test "returns whole.begin for discrete haps" do
       hap = Hap.new(TimeSpan.new(0.5, 1.0), %{s: "bd"})
-      assert Hap.onset(hap) == 0.5
+      assert Time.eq?(Hap.onset(hap), Time.new(1, 2))
     end
 
     test "returns nil for continuous haps" do
@@ -64,7 +65,7 @@ defmodule UzuPattern.HapTest do
   describe "duration/1" do
     test "returns duration of whole for discrete haps" do
       hap = Hap.new(TimeSpan.new(0.0, 0.5), %{s: "bd"})
-      assert Hap.duration(hap) == 0.5
+      assert Time.eq?(Hap.duration(hap), Time.new(1, 2))
     end
 
     test "returns nil for continuous haps" do
@@ -194,9 +195,9 @@ defmodule UzuPattern.HapTest do
       # Try to set part to [0.0, 0.5) - should clip to [0.2, 0.5)
       hap = Hap.with_part(hap, TimeSpan.new(0.0, 0.5))
 
-      assert hap.part == %{begin: 0.2, end: 0.5}
+      assert TimeSpan.eq?(hap.part, TimeSpan.new(0.2, 0.5))
       # Whole unchanged
-      assert hap.whole == %{begin: 0.2, end: 0.8}
+      assert TimeSpan.eq?(hap.whole, TimeSpan.new(0.2, 0.8))
     end
 
     test "returns nil if new part doesn't intersect whole" do
@@ -212,8 +213,8 @@ defmodule UzuPattern.HapTest do
       hap = Hap.new(TimeSpan.new(0.0, 0.5), %{s: "bd"})
       hap = Hap.shift(hap, 1.0)
 
-      assert hap.whole == %{begin: 1.0, end: 1.5}
-      assert hap.part == %{begin: 1.0, end: 1.5}
+      assert TimeSpan.eq?(hap.whole, TimeSpan.new(1.0, 1.5))
+      assert TimeSpan.eq?(hap.part, TimeSpan.new(1.0, 1.5))
     end
 
     test "shifts only part for continuous hap" do
@@ -221,7 +222,7 @@ defmodule UzuPattern.HapTest do
       hap = Hap.shift(hap, 1.0)
 
       assert hap.whole == nil
-      assert hap.part == %{begin: 1.0, end: 1.5}
+      assert TimeSpan.eq?(hap.part, TimeSpan.new(1.0, 1.5))
     end
   end
 
@@ -230,8 +231,8 @@ defmodule UzuPattern.HapTest do
       hap = Hap.new(TimeSpan.new(0.0, 1.0), %{s: "bd"})
       hap = Hap.scale(hap, 0.5)
 
-      assert hap.whole == %{begin: 0.0, end: 0.5}
-      assert hap.part == %{begin: 0.0, end: 0.5}
+      assert TimeSpan.eq?(hap.whole, TimeSpan.new(0.0, 0.5))
+      assert TimeSpan.eq?(hap.part, TimeSpan.new(0.0, 0.5))
     end
 
     test "scales only part for continuous hap" do
@@ -239,29 +240,29 @@ defmodule UzuPattern.HapTest do
       hap = Hap.scale(hap, 0.5)
 
       assert hap.whole == nil
-      assert hap.part == %{begin: 0.0, end: 0.5}
+      assert TimeSpan.eq?(hap.part, TimeSpan.new(0.0, 0.5))
     end
   end
 
   describe "whole vs part semantics" do
     test "hap represents boundary-clipped event" do
-      # Event naturally spans [0.8, 1.2)
-      # Query is [0.0, 1.0), so part is clipped
+      # Event naturally spans [4/5, 6/5) = [0.8, 1.2)
+      # Query is [0, 1), so part is clipped to [4/5, 1)
       hap = %Hap{
-        whole: %{begin: 0.8, end: 1.2},
-        part: %{begin: 0.8, end: 1.0},
+        whole: TimeSpan.new({4, 5}, {6, 5}),
+        part: TimeSpan.new({4, 5}, 1),
         value: %{s: "bd"},
         context: %{locations: [], tags: []}
       }
 
       # Onset is at whole.begin, not part.begin
-      assert Hap.onset(hap) == 0.8
+      assert Time.eq?(Hap.onset(hap), Time.new(4, 5))
 
-      # Duration is from whole, not part
-      assert_in_delta Hap.duration(hap), 0.4, 0.0001
+      # Duration is from whole, not part (6/5 - 4/5 = 2/5)
+      assert Time.eq?(Hap.duration(hap), Time.new(2, 5))
 
-      # The scheduler should trigger at onset (0.8)
-      # even though our query only covered [0.8, 1.0)
+      # The scheduler should trigger at onset (4/5)
+      # even though our query only covered [4/5, 1)
     end
   end
 end

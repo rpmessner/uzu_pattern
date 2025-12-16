@@ -4,6 +4,8 @@ defmodule UzuPattern.Pattern.SignalTest do
   alias UzuPattern.Hap
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Signal
+  alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   describe "signal/1" do
     test "creates a pattern from a time function" do
@@ -12,18 +14,18 @@ defmodule UzuPattern.Pattern.SignalTest do
 
       assert hap.value.value == 0.0
       assert Hap.continuous?(hap)
-      assert hap.part.begin == 0.0
-      assert hap.part.end - hap.part.begin == 1.0
+      assert Time.eq?(hap.part.begin, Time.zero())
+      assert Time.eq?(TimeSpan.duration(hap.part), Time.one())
     end
 
     test "samples at cycle time via sample_at" do
       sig = Signal.signal(fn t -> t end)
 
-      # sample_at allows fractional times
-      assert_in_delta Signal.sample_at(sig, 0), 0.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 1), 1.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 2), 2.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.5), 0.5, 0.001
+      # sample_at allows fractional times - identity function is exact
+      assert Signal.sample_at(sig, 0) == 0.0
+      assert Signal.sample_at(sig, 1) == 1.0
+      assert Signal.sample_at(sig, 2) == 2.0
+      assert Signal.sample_at(sig, 0.5) == 0.5
     end
 
     test "Pattern.query returns value at integer cycle" do
@@ -61,12 +63,14 @@ defmodule UzuPattern.Pattern.SignalTest do
     test "ramps from 0 to 1 each cycle" do
       sig = Signal.saw()
 
-      assert_in_delta Signal.sample_at(sig, 0), 0.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.5), 0.5, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.99), 0.99, 0.001
+      # Saw is just fractional part - exact for representable floats
+      assert Signal.sample_at(sig, 0) == 0.0
+      assert Signal.sample_at(sig, 0.5) == 0.5
+      assert Signal.sample_at(sig, 0.25) == 0.25
 
       # Wraps back to 0 at integer cycles
-      assert_in_delta Signal.sample_at(sig, 1), 0.0, 0.001
+      assert Signal.sample_at(sig, 1) == 0.0
+      assert Signal.sample_at(sig, 2) == 0.0
     end
   end
 
@@ -74,10 +78,11 @@ defmodule UzuPattern.Pattern.SignalTest do
     test "ramps up then down" do
       sig = Signal.tri()
 
-      assert_in_delta Signal.sample_at(sig, 0), 0.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.25), 0.5, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.5), 1.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.75), 0.5, 0.001
+      # Triangle is linear arithmetic - exact for representable floats
+      assert Signal.sample_at(sig, 0) == 0.0
+      assert Signal.sample_at(sig, 0.25) == 0.5
+      assert Signal.sample_at(sig, 0.5) == 1.0
+      assert Signal.sample_at(sig, 0.75) == 0.5
     end
   end
 
@@ -147,14 +152,18 @@ defmodule UzuPattern.Pattern.SignalTest do
 
       assert length(haps) == 4
 
-      times = Enum.map(haps, & &1.part.begin)
-      assert times == [0.0, 0.25, 0.5, 0.75]
+      # Times are now exact Ratio values
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(haps, 3).part.begin, Time.new(3, 4))
 
+      # Saw values are exact for these sample points
       values = Enum.map(haps, & &1.value.value)
-      assert_in_delta Enum.at(values, 0), 0.0, 0.001
-      assert_in_delta Enum.at(values, 1), 0.25, 0.001
-      assert_in_delta Enum.at(values, 2), 0.5, 0.001
-      assert_in_delta Enum.at(values, 3), 0.75, 0.001
+      assert Enum.at(values, 0) == 0.0
+      assert Enum.at(values, 1) == 0.25
+      assert Enum.at(values, 2) == 0.5
+      assert Enum.at(values, 3) == 0.75
     end
 
     test "creates discrete (non-continuous) events" do
@@ -171,10 +180,11 @@ defmodule UzuPattern.Pattern.SignalTest do
     test "samples signal at specific time" do
       sig = Signal.saw()
 
-      assert_in_delta Signal.sample_at(sig, 0.0), 0.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 0.5), 0.5, 0.001
-      assert_in_delta Signal.sample_at(sig, 1.0), 0.0, 0.001
-      assert_in_delta Signal.sample_at(sig, 1.5), 0.5, 0.001
+      # Saw values are exact for representable floats
+      assert Signal.sample_at(sig, 0.0) == 0.0
+      assert Signal.sample_at(sig, 0.5) == 0.5
+      assert Signal.sample_at(sig, 1.0) == 0.0
+      assert Signal.sample_at(sig, 1.5) == 0.5
     end
   end
 

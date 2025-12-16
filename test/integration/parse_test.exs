@@ -13,8 +13,11 @@ defmodule UzuPattern.Integration.ParseTest do
 
   use ExUnit.Case, async: true
 
+  alias Ratio
   alias UzuPattern.Hap
   alias UzuPattern.Pattern
+  alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   # Helper: parse string and get haps for cycle 0
   defp parse_events(pattern_string) do
@@ -25,8 +28,21 @@ defmodule UzuPattern.Integration.ParseTest do
 
   # Strudel-style helpers
   defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
-  defp times(haps), do: Enum.map(haps, & &1.part.begin)
-  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
+
+  # Sort haps by begin time
+  defp sort_by_time(haps) do
+    Enum.sort(haps, fn a, b -> Time.lt?(a.part.begin, b.part.begin) end)
+  end
+
+  # Check all haps have the same begin time
+  defp all_same_time?(haps, expected) do
+    Enum.all?(haps, fn h -> Time.eq?(h.part.begin, expected) end)
+  end
+
+  # Check all haps have same duration
+  defp all_duration_eq?(haps, expected) do
+    Enum.all?(haps, fn h -> Time.eq?(TimeSpan.duration(h.part), expected) end)
+  end
 
   # Helper: assert locations match expected {start, end} tuples
   defp assert_locations_match(pattern, haps) do
@@ -47,13 +63,13 @@ defmodule UzuPattern.Integration.ParseTest do
 
   describe "basic sequences" do
     test "space-separated sounds with even timing" do
-      haps = parse_events("bd sd hh sd")
+      haps = sort_by_time(parse_events("bd sd hh sd"))
 
       assert length(haps) == 4
       assert sounds(haps) == ["bd", "sd", "hh", "sd"]
-      assert Enum.all?(durations(haps), &(&1 == 0.25))
-      assert hd(times(haps)) == 0.0
-      assert_in_delta List.last(times(haps)), 0.75, 0.01
+      assert all_duration_eq?(haps, Time.new(1, 4))
+      assert Time.eq?(hd(haps).part.begin, Time.zero())
+      assert Time.eq?(List.last(haps).part.begin, Time.new(3, 4))
     end
 
     test "empty and whitespace patterns return empty list" do
@@ -62,11 +78,11 @@ defmodule UzuPattern.Integration.ParseTest do
     end
 
     test "rests occupy time slots but produce no events" do
-      haps = parse_events("bd ~ sd ~")
+      haps = sort_by_time(parse_events("bd ~ sd ~"))
 
       assert length(haps) == 2
-      assert hd(times(haps)) == 0.0
-      assert_in_delta Enum.at(times(haps), 1), 0.5, 0.01
+      assert Time.eq?(hd(haps).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.half())
     end
 
     test "period separator works like space" do
@@ -112,7 +128,7 @@ defmodule UzuPattern.Integration.ParseTest do
       haps = parse_events("[bd,sd,hh]")
 
       assert length(haps) == 3
-      assert Enum.all?(times(haps), &(&1 == 0.0))
+      assert all_same_time?(haps, Time.zero())
     end
 
     test "chord within sequence" do
@@ -121,7 +137,7 @@ defmodule UzuPattern.Integration.ParseTest do
       hh = Enum.find(haps, &(Hap.sound(&1) == "hh"))
 
       assert length(haps) == 4
-      assert sd.part.begin == hh.part.begin
+      assert Time.eq?(sd.part.begin, hh.part.begin)
     end
 
     test "nested polyphony" do
@@ -130,7 +146,7 @@ defmodule UzuPattern.Integration.ParseTest do
       sd = Enum.find(haps, &(Hap.sound(&1) == "sd"))
 
       assert length(haps) == 3
-      assert_in_delta bd.part.begin, sd.part.begin, 0.01
+      assert Time.eq?(bd.part.begin, sd.part.begin)
     end
   end
 
@@ -140,14 +156,14 @@ defmodule UzuPattern.Integration.ParseTest do
       cp = Enum.find(haps, &(Hap.sound(&1) == "cp"))
 
       assert length(haps) == 4
-      assert_in_delta cp.part.end - cp.part.begin, 1.0, 0.01
+      assert Time.eq?(TimeSpan.duration(cp.part), Time.one())
     end
 
     test "step control {bd sd}%4" do
       haps = parse_events("{bd sd}%4")
 
       assert length(haps) == 2
-      assert Enum.all?(durations(haps), &(abs(&1 - 0.25) < 0.01))
+      assert all_duration_eq?(haps, Time.new(1, 4))
     end
   end
 
@@ -168,17 +184,19 @@ defmodule UzuPattern.Integration.ParseTest do
     end
 
     test "weight @ affects duration distribution" do
-      haps = parse_events("bd@2 sd")
+      haps = sort_by_time(parse_events("bd@2 sd"))
 
-      assert_in_delta Enum.at(durations(haps), 0), 0.666, 0.01
-      assert_in_delta Enum.at(durations(haps), 1), 0.333, 0.01
+      # bd@2 gets 2/3, sd gets 1/3
+      assert Time.eq?(TimeSpan.duration(Enum.at(haps, 0).part), Time.new(2, 3))
+      assert Time.eq?(TimeSpan.duration(Enum.at(haps, 1).part), Time.new(1, 3))
     end
 
     test "elongation _ extends previous event" do
-      haps = parse_events("bd _ _ sd")
+      haps = sort_by_time(parse_events("bd _ _ sd"))
 
       assert length(haps) == 2
-      assert_in_delta hd(durations(haps)), 0.75, 0.01
+      # bd spans 3/4 of the cycle
+      assert Time.eq?(TimeSpan.duration(hd(haps).part), Time.new(3, 4))
     end
 
     test "division /2 slows pattern across cycles" do
@@ -252,7 +270,7 @@ defmodule UzuPattern.Integration.ParseTest do
       haps = parse_events("bd sd bd sd")
 
       assert length(haps) == 4
-      assert_in_delta hd(durations(haps)), 0.25, 0.01
+      assert all_duration_eq?(haps, Time.new(1, 4))
     end
 
     test "hihat subdivisions" do
@@ -280,8 +298,9 @@ defmodule UzuPattern.Integration.ParseTest do
 
       assert %Hap{} = hap
       assert is_binary(Hap.sound(hap))
-      assert is_float(hap.part.begin)
-      assert is_float(hap.part.end)
+      # Times are Ratio values for exact arithmetic
+      assert %Ratio{} = hap.part.begin
+      assert %Ratio{} = hap.part.end
       assert is_map(hap.value)
       assert Hap.sample(hap) == 1
     end
@@ -290,7 +309,8 @@ defmodule UzuPattern.Integration.ParseTest do
       haps = parse_events("bd sd hh cp oh rim")
 
       Enum.each(haps, fn hap ->
-        assert hap.part.begin >= 0.0 and hap.part.begin < 1.0
+        assert Time.gte?(hap.part.begin, Time.zero())
+        assert Time.lt?(hap.part.begin, Time.one())
       end)
     end
   end

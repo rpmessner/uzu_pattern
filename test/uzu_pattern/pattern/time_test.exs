@@ -9,25 +9,30 @@ defmodule UzuPattern.Pattern.TimeTest do
 
   alias UzuPattern.Hap
   alias UzuPattern.Pattern
+  alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   defp parse(str), do: UzuPattern.parse(str)
 
   # Strudel-style helpers
   defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
-  defp times(haps), do: Enum.map(haps, & &1.part.begin)
-  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
+
+  # Sort haps by part begin time using exact rational comparison
+  defp sort_by_time(haps) do
+    Enum.sort(haps, fn a, b -> Time.lt?(a.part.begin, b.part.begin) end)
+  end
 
   describe "fast/2" do
     test "plays pattern twice per cycle with factor 2" do
       pattern = parse("bd sd") |> Pattern.fast(2)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
       assert length(haps) == 4
       assert sounds(haps) == ["bd", "sd", "bd", "sd"]
-      assert_in_delta Enum.at(times(haps), 0), 0.0, 0.01
-      assert_in_delta Enum.at(times(haps), 1), 0.25, 0.01
-      assert_in_delta Enum.at(times(haps), 2), 0.5, 0.01
-      assert_in_delta Enum.at(times(haps), 3), 0.75, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(haps, 3).part.begin, Time.new(3, 4))
     end
 
     test "slows pattern with factor < 1" do
@@ -57,8 +62,8 @@ defmodule UzuPattern.Pattern.TimeTest do
       haps = Pattern.query(pattern, 0)
 
       Enum.each(haps, fn hap ->
-        assert hap.part.begin >= 0.0
-        assert hap.part.begin < 1.0
+        assert Time.gte?(hap.part.begin, Time.zero())
+        assert Time.lt?(hap.part.begin, Time.one())
       end)
     end
   end
@@ -91,34 +96,32 @@ defmodule UzuPattern.Pattern.TimeTest do
   describe "early/2" do
     test "shifts pattern earlier with wrap" do
       pattern = parse("bd sd") |> Pattern.early(0.25)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
-      hap_times = times(haps) |> Enum.sort()
-      assert_in_delta Enum.at(hap_times, 0), 0.25, 0.01
-      assert_in_delta Enum.at(hap_times, 1), 0.75, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(3, 4))
     end
 
     test "early wraps correctly at boundaries" do
       pattern = parse("bd") |> Pattern.early(0.5)
       [hap] = Pattern.query(pattern, 0)
-      assert_in_delta hap.part.begin, 0.5, 0.001
+      assert Time.eq?(hap.part.begin, Time.half())
     end
   end
 
   describe "late/2" do
     test "shifts pattern later with wrap" do
       pattern = parse("bd sd") |> Pattern.late(0.25)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
-      hap_times = times(haps) |> Enum.sort()
-      assert_in_delta Enum.at(hap_times, 0), 0.25, 0.01
-      assert_in_delta Enum.at(hap_times, 1), 0.75, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(3, 4))
     end
 
     test "late wraps correctly at boundaries" do
       pattern = parse("bd") |> Pattern.late(0.75)
       [hap] = Pattern.query(pattern, 0)
-      assert_in_delta hap.part.begin, 0.75, 0.001
+      assert Time.eq?(hap.part.begin, Time.new(3, 4))
     end
   end
 
@@ -135,19 +138,19 @@ defmodule UzuPattern.Pattern.TimeTest do
       haps = Pattern.events(pattern)
 
       assert length(haps) == 6
-      assert_in_delta hd(durations(haps)), 0.5 / 3, 0.01
+      # Duration should be 1/6 (half of original 1/2, divided by 3)
+      assert Time.eq?(TimeSpan.duration(hd(haps).part), Time.new(1, 6))
     end
 
     test "spaces repetitions evenly within event duration" do
       pattern = parse("bd") |> Pattern.ply(4)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
       assert length(haps) == 4
-      hap_times = times(haps)
-      assert_in_delta Enum.at(hap_times, 0), 0.0, 0.01
-      assert_in_delta Enum.at(hap_times, 1), 0.25, 0.01
-      assert_in_delta Enum.at(hap_times, 2), 0.5, 0.01
-      assert_in_delta Enum.at(hap_times, 3), 0.75, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.half())
+      assert Time.eq?(Enum.at(haps, 3).part.begin, Time.new(3, 4))
     end
 
     test "maintains event properties" do
@@ -176,7 +179,9 @@ defmodule UzuPattern.Pattern.TimeTest do
       pattern = parse("bd sd hh cp") |> Pattern.compress(0.25, 0.75)
       haps = Pattern.events(pattern)
 
-      assert Enum.all?(haps, fn h -> h.part.begin >= 0.25 and h.part.begin < 0.75 end)
+      assert Enum.all?(haps, fn h ->
+               Time.gte?(h.part.begin, Time.new(1, 4)) and Time.lt?(h.part.begin, Time.new(3, 4))
+             end)
     end
 
     test "maintains event count" do
@@ -188,28 +193,26 @@ defmodule UzuPattern.Pattern.TimeTest do
 
     test "scales times proportionally" do
       pattern = parse("bd sd") |> Pattern.compress(0.0, 0.5)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
-      hap_times = times(haps)
-      assert_in_delta Enum.at(hap_times, 0), 0.0, 0.01
-      assert_in_delta Enum.at(hap_times, 1), 0.25, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
     end
 
     test "scales durations proportionally" do
       pattern = parse("bd sd") |> Pattern.compress(0.0, 0.5)
       haps = Pattern.events(pattern)
 
-      hap_durations = durations(haps)
-      assert_in_delta Enum.at(hap_durations, 0), 0.25, 0.01
-      assert_in_delta Enum.at(hap_durations, 1), 0.25, 0.01
+      assert Time.eq?(TimeSpan.duration(Enum.at(haps, 0).part), Time.new(1, 4))
+      assert Time.eq?(TimeSpan.duration(Enum.at(haps, 1).part), Time.new(1, 4))
     end
 
     test "creates rhythmic gap" do
       pattern = parse("bd sd") |> Pattern.compress(0.25, 0.75)
       haps = Pattern.events(pattern)
 
-      assert Enum.all?(haps, fn h -> h.part.begin >= 0.25 end)
-      assert Enum.all?(haps, fn h -> h.part.end <= 0.75 end)
+      assert Enum.all?(haps, fn h -> Time.gte?(h.part.begin, Time.new(1, 4)) end)
+      assert Enum.all?(haps, fn h -> Time.lte?(h.part.end, Time.new(3, 4)) end)
     end
 
     test "maintains event properties" do
@@ -236,12 +239,11 @@ defmodule UzuPattern.Pattern.TimeTest do
 
     test "expands extracted segment to full cycle" do
       pattern = parse("bd sd hh cp") |> Pattern.zoom(0.5, 1.0)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
       assert length(haps) == 2
-      hap_times = times(haps)
-      assert_in_delta Enum.at(hap_times, 0), 0.0, 0.01
-      assert_in_delta Enum.at(hap_times, 1), 0.5, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.half())
     end
 
     test "scales durations correctly" do
@@ -249,7 +251,7 @@ defmodule UzuPattern.Pattern.TimeTest do
       haps = Pattern.events(pattern)
 
       assert length(haps) == 1
-      assert_in_delta hd(durations(haps)), 1.0, 0.01
+      assert Time.eq?(TimeSpan.duration(hd(haps).part), Time.one())
     end
 
     test "filters events outside window" do
@@ -310,14 +312,13 @@ defmodule UzuPattern.Pattern.TimeTest do
 
     test "spaces repetitions correctly" do
       pattern = parse("bd sd") |> Pattern.linger(0.5)
-      haps = Pattern.events(pattern)
+      haps = sort_by_time(Pattern.events(pattern))
 
       assert length(haps) == 2
       assert Enum.all?(haps, fn h -> Hap.sound(h) == "bd" end)
 
-      hap_times = times(haps)
-      assert_in_delta Enum.at(hap_times, 0), 0.0, 0.01
-      assert_in_delta Enum.at(hap_times, 1), 0.5, 0.01
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.half())
     end
 
     test "maintains event properties" do
@@ -425,15 +426,15 @@ defmodule UzuPattern.Pattern.TimeTest do
 
       transformed = pattern |> Pattern.fast(2) |> Pattern.slow(2)
 
-      original_haps = Pattern.query(pattern, 0)
-      transformed_haps = Pattern.query(transformed, 0)
+      original_haps = sort_by_time(Pattern.query(pattern, 0))
+      transformed_haps = sort_by_time(Pattern.query(transformed, 0))
 
       assert length(original_haps) == length(transformed_haps)
 
       Enum.zip(original_haps, transformed_haps)
       |> Enum.each(fn {orig, trans} ->
         assert Hap.sound(orig) == Hap.sound(trans)
-        assert_in_delta orig.part.begin, trans.part.begin, 0.001
+        assert Time.eq?(orig.part.begin, trans.part.begin)
       end)
     end
 

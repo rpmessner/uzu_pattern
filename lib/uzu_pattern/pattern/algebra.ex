@@ -33,6 +33,7 @@ defmodule UzuPattern.Pattern.Algebra do
   alias UzuPattern.Pattern
   alias UzuPattern.Hap
   alias UzuPattern.TimeSpan
+  alias UzuPattern.Time, as: T
 
   # ============================================================================
   # Functor: fmap / with_value
@@ -411,7 +412,7 @@ defmodule UzuPattern.Pattern.Algebra do
   """
   @spec focus_span(Pattern.t(), TimeSpan.t()) :: Pattern.t()
   def focus_span(%Pattern{} = pattern, %{begin: b, end: e}) do
-    duration = e - b
+    duration = T.sub(e, b)
 
     # Create a new pattern that transforms queries
     # When queried at [qb, qe), we need to:
@@ -421,8 +422,8 @@ defmodule UzuPattern.Pattern.Algebra do
     Pattern.new(fn query_span ->
       # Map query span from focused time back to original pattern time
       # focused time t maps to original time: (t - b) / duration
-      orig_begin = (query_span.begin - b) / duration
-      orig_end = (query_span.end - b) / duration
+      orig_begin = T.divide(T.sub(query_span.begin, b), duration)
+      orig_end = T.divide(T.sub(query_span.end, b), duration)
       orig_span = %{begin: orig_begin, end: orig_end}
 
       # Query the original pattern
@@ -441,7 +442,8 @@ defmodule UzuPattern.Pattern.Algebra do
   defp map_timespan_to_focus(nil, _b, _duration), do: nil
 
   defp map_timespan_to_focus(%{begin: tb, end: te}, b, duration) do
-    %{begin: b + tb * duration, end: b + te * duration}
+    # b + tb * duration, b + te * duration
+    %{begin: T.add(b, T.mult(tb, duration)), end: T.add(b, T.mult(te, duration))}
   end
 
   # ============================================================================

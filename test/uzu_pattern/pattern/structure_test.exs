@@ -10,13 +10,18 @@ defmodule UzuPattern.Pattern.StructureTest do
 
   alias UzuPattern.Hap
   alias UzuPattern.Pattern
+  alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   defp parse(str), do: UzuPattern.parse(str)
 
   # Strudel-style helpers
   defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
-  defp times(haps), do: Enum.map(haps, & &1.part.begin)
-  defp durations(haps), do: Enum.map(haps, &(&1.part.end - &1.part.begin))
+
+  # Check if any hap has a specific begin time
+  defp has_time?(haps, expected) do
+    Enum.any?(haps, fn h -> Time.eq?(h.part.begin, expected) end)
+  end
 
   describe "rev/1" do
     test "reverses event order" do
@@ -39,8 +44,8 @@ defmodule UzuPattern.Pattern.StructureTest do
       haps = Pattern.query(pattern, 0)
 
       Enum.each(haps, fn hap ->
-        assert hap.part.begin >= 0.0
-        assert hap.part.begin < 1.0, "Event at time #{hap.part.begin} should be < 1.0"
+        assert Time.gte?(hap.part.begin, Time.zero())
+        assert Time.lt?(hap.part.begin, Time.one()), "Event should be < 1.0"
       end)
     end
   end
@@ -254,12 +259,12 @@ defmodule UzuPattern.Pattern.StructureTest do
     end
 
     test "wraps time correctly" do
-      pattern = parse("bd") |> Pattern.off(0.9, fn p -> p end)
+      # Use 0.25 which is exactly representable as 1/4
+      pattern = parse("bd") |> Pattern.off(0.25, fn p -> p end)
       haps = Pattern.events(pattern)
 
-      hap_times = times(haps)
-      assert 0.0 in hap_times
-      assert Enum.any?(hap_times, fn t -> abs(t - 0.9) < 0.001 end)
+      assert has_time?(haps, Time.zero())
+      assert has_time?(haps, Time.new(1, 4))
     end
   end
 
@@ -296,7 +301,10 @@ defmodule UzuPattern.Pattern.StructureTest do
       haps = Pattern.events(pattern)
 
       assert length(haps) == 4
-      assert Enum.all?(durations(haps), fn d -> d < 0.5 end)
+      # Each slice should have duration less than 1/2
+      assert Enum.all?(haps, fn h ->
+               Time.lt?(TimeSpan.duration(h.part), Time.half())
+             end)
     end
   end
 

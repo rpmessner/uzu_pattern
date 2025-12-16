@@ -15,6 +15,8 @@ defmodule UzuPattern.Pattern.Structure do
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Effects
   alias UzuPattern.Hap
+  alias UzuPattern.Time, as: T
+  alias UzuPattern.TimeSpan
 
   @doc """
   Reverse the pattern within each cycle.
@@ -25,11 +27,14 @@ defmodule UzuPattern.Pattern.Structure do
       |> Pattern.query(cycle)
       |> Enum.map(fn hap ->
         onset = Hap.onset(hap) || hap.part.begin
-        dur = hap.part.end - hap.part.begin
-        new_onset = 1.0 - onset - dur
-        set_hap_timespan(hap, new_onset, new_onset + dur)
+        dur = TimeSpan.duration(hap.part)
+        # new_onset = 1 - onset - dur
+        new_onset = T.sub(T.sub(T.one(), onset), dur)
+        set_hap_timespan(hap, new_onset, T.add(new_onset, dur))
       end)
-      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
+      |> Enum.sort_by(fn hap ->
+        T.to_float(Hap.onset(hap) || hap.part.begin)
+      end)
     end)
   end
 
@@ -56,7 +61,8 @@ defmodule UzuPattern.Pattern.Structure do
 
         Enum.any?(struct_haps, fn struct_hap ->
           struct_onset = Hap.onset(struct_hap) || struct_hap.part.begin
-          abs(onset - struct_onset) < 0.001
+          # Exact rational comparison
+          T.eq?(onset, struct_onset)
         end)
       end)
     end)
@@ -84,7 +90,8 @@ defmodule UzuPattern.Pattern.Structure do
 
         Enum.any?(active_mask_haps, fn mask_hap ->
           mask_onset = Hap.onset(mask_hap) || mask_hap.part.begin
-          abs(onset - mask_onset) < 0.001
+          # Exact rational comparison
+          T.eq?(onset, mask_onset)
         end)
       end)
     end)
@@ -171,29 +178,34 @@ defmodule UzuPattern.Pattern.Structure do
   def echo(%Pattern{} = pattern, n, time_offset, gain_factor)
       when is_integer(n) and n > 0 and is_number(time_offset) and
              is_number(gain_factor) and gain_factor >= 0.0 and gain_factor <= 1.0 do
+    offset_t = T.from_float(time_offset)
+
     Pattern.from_cycles(fn cycle ->
       base_haps = Pattern.query(pattern, cycle)
 
       echoes =
         for i <- 1..n do
-          offset = time_offset * i
+          offset = T.mult(offset_t, T.new(i))
           gain_mult = :math.pow(gain_factor, i)
 
           Enum.map(base_haps, fn hap ->
             onset = Hap.onset(hap) || hap.part.begin
-            dur = hap.part.end - hap.part.begin
-            new_onset = onset + offset
-            wrapped_onset = new_onset - Float.floor(new_onset)
+            dur = TimeSpan.duration(hap.part)
+            new_onset = T.add(onset, offset)
+            # Wrap to cycle using rational floor
+            wrapped_onset = T.cycle_pos(new_onset)
             current_gain = Map.get(hap.value, :gain, 1.0)
 
             hap
-            |> set_hap_timespan(wrapped_onset, wrapped_onset + dur)
+            |> set_hap_timespan(wrapped_onset, T.add(wrapped_onset, dur))
             |> put_in([Access.key(:value), :gain], current_gain * gain_mult)
           end)
         end
         |> List.flatten()
 
-      Enum.sort_by(base_haps ++ echoes, &(Hap.onset(&1) || &1.part.begin))
+      Enum.sort_by(base_haps ++ echoes, fn hap ->
+        T.to_float(Hap.onset(hap) || hap.part.begin)
+      end)
     end)
   end
 
@@ -206,15 +218,17 @@ defmodule UzuPattern.Pattern.Structure do
       |> Pattern.query(cycle)
       |> Enum.flat_map(fn hap ->
         onset = Hap.onset(hap) || hap.part.begin
-        dur = hap.part.end - hap.part.begin
-        slice_dur = dur / n
+        dur = TimeSpan.duration(hap.part)
+        slice_dur = T.divide(dur, n)
 
         for i <- 0..(n - 1) do
-          new_onset = onset + i * slice_dur
-          set_hap_timespan(hap, new_onset, new_onset + slice_dur)
+          new_onset = T.add(onset, T.mult(T.new(i), slice_dur))
+          set_hap_timespan(hap, new_onset, T.add(new_onset, slice_dur))
         end
       end)
-      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
+      |> Enum.sort_by(fn hap ->
+        T.to_float(Hap.onset(hap) || hap.part.begin)
+      end)
     end)
   end
 
@@ -229,21 +243,23 @@ defmodule UzuPattern.Pattern.Structure do
       |> Pattern.query(cycle)
       |> Enum.flat_map(fn hap ->
         onset = Hap.onset(hap) || hap.part.begin
-        dur = hap.part.end - hap.part.begin
-        piece_dur = dur / n
+        dur = TimeSpan.duration(hap.part)
+        piece_dur = T.divide(dur, n)
 
         for i <- 0..(n - 1) do
-          new_onset = onset + i * piece_dur
-          set_hap_timespan(hap, new_onset, new_onset + piece_dur)
+          new_onset = T.add(onset, T.mult(T.new(i), piece_dur))
+          set_hap_timespan(hap, new_onset, T.add(new_onset, piece_dur))
         end
       end)
-      |> Enum.sort_by(&(Hap.onset(&1) || &1.part.begin))
+      |> Enum.sort_by(fn hap ->
+        T.to_float(Hap.onset(hap) || hap.part.begin)
+      end)
     end)
   end
 
   # Set a hap's timespan to specific begin/end values
   defp set_hap_timespan(%Hap{} = hap, begin_time, end_time) do
-    timespan = %{begin: begin_time, end: end_time}
+    timespan = TimeSpan.new(begin_time, end_time)
     %{hap | whole: timespan, part: timespan}
   end
 end
