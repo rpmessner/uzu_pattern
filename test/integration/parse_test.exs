@@ -85,11 +85,12 @@ defmodule UzuPattern.Integration.ParseTest do
       assert Time.eq?(Enum.at(haps, 1).part.begin, Time.half())
     end
 
-    test "period separator works like space" do
+    test "period is part of sound name (Strudel compatibility)" do
+      # In Strudel, bd.sd.hh is ONE sound with a dotted name
       haps = parse_events("bd.sd.hh")
 
-      assert length(haps) == 3
-      assert sounds(haps) == ["bd", "sd", "hh"]
+      assert length(haps) == 1
+      assert sounds(haps) == ["bd.sd.hh"]
     end
   end
 
@@ -151,12 +152,16 @@ defmodule UzuPattern.Integration.ParseTest do
   end
 
   describe "polymetric sequences" do
-    test "groups have independent timing" do
+    test "groups are aligned to first group's timing" do
+      # Strudel aligns second group to first group's step count
+      # First group has 3 items (bd, sd, hh), so each takes 1/3 cycle
+      # Second group (cp) gets stretched to match: 3 cp events at 0-1/3, 1/3-2/3, 2/3-1
       haps = parse_events("{bd sd hh, cp}")
-      cp = Enum.find(haps, &(Hap.sound(&1) == "cp"))
 
-      assert length(haps) == 4
-      assert Time.eq?(TimeSpan.duration(cp.part), Time.one())
+      assert length(haps) == 6
+
+      # All events have duration 1/3
+      assert all_duration_eq?(haps, Time.new(1, 3))
     end
 
     test "step control {bd sd}%4" do
@@ -285,10 +290,13 @@ defmodule UzuPattern.Integration.ParseTest do
       assert length(haps) == 6
     end
 
-    test "polyrhythm 3 against 4" do
+    test "polyrhythm 4 against 3" do
+      # First group has 4 items, so each takes 1/4 cycle
+      # Second group (3 items) gets scaled to match: cp cp cp spread over 4 beats
       haps = parse_events("{bd bd bd bd, cp cp cp}")
 
-      assert length(haps) == 7
+      # 4 bd + 4 cp (scaled from 3 to align with 4-step grid)
+      assert length(haps) == 8
     end
   end
 

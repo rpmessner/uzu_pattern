@@ -558,18 +558,22 @@ defmodule UzuPattern.Integration.MiniNotationTest do
   end
 
   # ============================================================================
-  # Period Separator
+  # Period in Sound Names (Strudel Compatibility)
   # ============================================================================
 
-  describe "period separator" do
-    test "period creates subdivision" do
-      haps = parse_events("bd . sd hh")
-      assert length(haps) == 3
+  describe "period in sound names" do
+    test "period is part of sound name, not a separator" do
+      # In Strudel, "bd.sd.hh" is ONE sound with a dotted name
+      haps = parse_events("bd.sd.hh")
+      assert length(haps) == 1
+      assert hd(haps).value.s == "bd.sd.hh"
     end
 
-    test "multiple periods" do
-      haps = parse_events("bd . sd . hh cp")
+    test "standalone period surrounded by spaces is a sound named dot" do
+      # "bd . sd" parses as three sounds: "bd", ".", "sd"
+      haps = parse_events("bd . sd hh")
       assert length(haps) == 4
+      assert Enum.map(haps, & &1.value.s) == ["bd", ".", "sd", "hh"]
     end
   end
 
@@ -599,8 +603,10 @@ defmodule UzuPattern.Integration.MiniNotationTest do
     end
 
     test "polyrhythm" do
+      # First group has 3 items (bd bd bd), so each takes 1/3 cycle
+      # Second group (5 hh's) gets scaled to match: 3 hh events aligned with bd
       haps = parse_events("{bd bd bd, hh hh hh hh hh}")
-      assert length(haps) == 8
+      assert length(haps) == 6
     end
   end
 
@@ -702,6 +708,117 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
       assert sounds(haps_0) == ["bd", "hh"]
       assert sounds(haps_1) == ["sd", "cp"]
+    end
+  end
+
+  # ============================================================================
+  # Grouper Modifiers (replicate, probability on structures)
+  # ============================================================================
+
+  describe "grouper modifiers" do
+    test "subdivision with replicate [a b]!3" do
+      # Same as [a b]*3 - speeds up by 3
+      pattern = parse("[bd sd]!3")
+      haps = Pattern.query(pattern, 0)
+
+      assert length(haps) == 6
+      assert sounds(haps) == ["bd", "sd", "bd", "sd", "bd", "sd"]
+    end
+
+    test "subdivision with bare replicate [a b]!" do
+      # ! alone defaults to 1, so no speed change
+      pattern = parse("[bd sd]!")
+      haps = Pattern.query(pattern, 0)
+
+      assert length(haps) == 2
+      assert sounds(haps) == ["bd", "sd"]
+    end
+
+    test "subdivision with probability [a b]?" do
+      # 50% chance - deterministic based on cycle
+      pattern = parse("[bd sd hh cp]?")
+
+      # Run multiple cycles and check that some have events and some don't
+      results = Enum.map(0..19, fn cycle -> length(Pattern.query(pattern, cycle)) end)
+
+      # Should have variation (not all same)
+      assert length(Enum.uniq(results)) > 1
+    end
+
+    test "subdivision with probability value [a b]?0.25" do
+      pattern = parse("[bd sd hh cp]?0.25")
+
+      # With 25% probability per event, most events should be filtered
+      results = Enum.map(0..19, fn cycle -> length(Pattern.query(pattern, cycle)) end)
+
+      # Average should be around 1 event per cycle (4 events * 25% = 1)
+      total_events = Enum.sum(results)
+      average = total_events / 20
+
+      # With 25% probability, expect roughly 1 event per cycle (not 4)
+      assert average < 2.5
+    end
+
+    test "alternation with replicate <a b>!3" do
+      # Same as <a b>*3 - speeds up by 3
+      pattern = parse("<bd sd>!3")
+      haps = Pattern.query(pattern, 0)
+
+      # 3 iterations per cycle
+      assert length(haps) == 3
+      assert sounds(haps) == ["bd", "sd", "bd"]
+    end
+
+    test "alternation with probability <a b>?" do
+      pattern = parse("<bd sd>?")
+
+      # Run multiple cycles and check variation
+      results = Enum.map(0..19, fn cycle -> length(Pattern.query(pattern, cycle)) end)
+      assert length(Enum.uniq(results)) > 1
+    end
+
+    test "polymetric with repeat {a b}*2" do
+      # Base: {bd sd, hh hh hh} - first group has 2 items, second scaled to match
+      # Per Strudel: base pattern produces 4 events (bd, sd, hh, hh aligned to 2-step grid)
+      # *2 plays pattern twice in one cycle, so 8 events total
+      pattern = parse("{bd sd, hh hh hh}*2")
+      haps = Pattern.query(pattern, 0)
+
+      assert length(haps) == 8
+    end
+
+    test "polymetric with division {a b}/2" do
+      # {bd sd, hh hh hh} aligns groups: 4 events per cycle (bd hh at 0-0.5, sd hh at 0.5-1)
+      # /2 slows the pattern: events stretch over 2 cycles
+      pattern = parse("{bd sd, hh hh hh}/2")
+
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+
+      # Cycle 0 gets first half: bd + hh
+      # Cycle 1 gets second half: sd + hh
+      assert length(haps_0) == 2
+      assert Enum.sort(sounds(haps_0)) == ["bd", "hh"]
+
+      assert length(haps_1) == 2
+      assert Enum.sort(sounds(haps_1)) == ["hh", "sd"]
+    end
+
+    test "polymetric with probability {a b}?" do
+      pattern = parse("{bd sd, hh hh hh}?")
+
+      # Run multiple cycles and check variation
+      results = Enum.map(0..19, fn cycle -> length(Pattern.query(pattern, cycle)) end)
+      assert length(Enum.uniq(results)) > 1
+    end
+
+    test "bare replicate on atom a!" do
+      pattern = parse("a!")
+      haps = Pattern.query(pattern, 0)
+
+      # ! alone defaults to 1, so single event
+      assert length(haps) == 1
+      assert sounds(haps) == ["a"]
     end
   end
 

@@ -51,11 +51,31 @@ defmodule UzuPattern.Pattern.StructureTest do
   end
 
   describe "palindrome/1" do
-    test "creates forward then backward pattern" do
-      pattern = parse("bd sd hh") |> Pattern.palindrome()
-      haps = Pattern.events(pattern)
+    test "alternates forward and backward across cycles" do
+      pattern = parse("a b c") |> Pattern.palindrome()
+
+      # Cycle 0: forward
+      haps_0 = Pattern.query(pattern, 0)
+      assert length(haps_0) == 3
+      assert sounds(haps_0) == ["a", "b", "c"]
+
+      # Cycle 1: reversed
+      haps_1 = Pattern.query(pattern, 1)
+      assert length(haps_1) == 3
+      assert sounds(haps_1) == ["c", "b", "a"]
+
+      # Cycle 2: forward again
+      haps_2 = Pattern.query(pattern, 2)
+      assert sounds(haps_2) == ["a", "b", "c"]
+    end
+
+    test "fast(2) shows forward and backward in single cycle (Strudel compatibility)" do
+      # Strudel: fastcat('a','b','c').palindrome().fast(2) == ['a','b','c','c','b','a']
+      pattern = parse("a b c") |> Pattern.palindrome() |> Pattern.fast(2)
+      haps = Pattern.query(pattern, 0)
 
       assert length(haps) == 6
+      assert sounds(haps) == ["a", "b", "c", "c", "b", "a"]
     end
   end
 
@@ -251,20 +271,26 @@ defmodule UzuPattern.Pattern.StructureTest do
   end
 
   describe "off/3" do
-    test "creates delayed copy" do
+    test "creates delayed copy with proper late semantics" do
+      # off uses late() which pulls from previous cycle via query time transformation
+      # Stack original (2 events) + late(0.125, rev) (3 events due to cycle boundary)
       pattern = parse("bd sd") |> Pattern.off(0.125, &Pattern.rev/1)
       haps = Pattern.events(pattern)
 
-      assert length(haps) == 4
+      # 5 events: 2 original + 3 from delayed rev (includes cycle -1's bd shifted into view)
+      assert length(haps) == 5
     end
 
-    test "wraps time correctly" do
-      # Use 0.25 which is exactly representable as 1/4
+    test "off with identity creates offset copy" do
+      # off(0.25, identity) should give 2 original + 2 delayed = 4 events
+      # (0.25 offset doesn't cross cycle boundary as much)
       pattern = parse("bd") |> Pattern.off(0.25, fn p -> p end)
       haps = Pattern.events(pattern)
 
       assert has_time?(haps, Time.zero())
       assert has_time?(haps, Time.new(1, 4))
+      # Original + delayed copy (potentially 3 due to cycle boundary)
+      assert length(haps) >= 2
     end
   end
 

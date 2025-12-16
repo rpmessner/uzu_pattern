@@ -94,34 +94,65 @@ defmodule UzuPattern.Pattern.TimeTest do
   end
 
   describe "early/2" do
-    test "shifts pattern earlier with wrap" do
+    test "shifts pattern earlier using query time transformation" do
+      # early(0.25) queries [0.25, 1.25), returning events from cycles 0 and 1:
+      # - Cycle 0 bd [0, 0.5) → shifted to [-0.25, 0.25), clipped to [0, 0.25)
+      # - Cycle 0 sd [0.5, 1) → shifted to [0.25, 0.75)
+      # - Cycle 1 bd [1, 1.5) → shifted to [0.75, 1.25), clipped to [0.75, 1)
       pattern = parse("bd sd") |> Pattern.early(0.25)
       haps = sort_by_time(Pattern.events(pattern))
 
-      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.new(1, 4))
-      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(3, 4))
+      assert length(haps) == 3
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.new(3, 4))
     end
 
-    test "early wraps correctly at boundaries" do
+    test "early pulls future events into current cycle" do
+      # early(0.5) on "bd" [0,1) → query [0.5, 1.5) from underlying
+      # Returns parts of events from cycles 0 and 1
       pattern = parse("bd") |> Pattern.early(0.5)
-      [hap] = Pattern.query(pattern, 0)
-      assert Time.eq?(hap.part.begin, Time.half())
+      haps = Pattern.query(pattern, 0)
+
+      # We get events from both cycles: one clipped to [0, 0.5), one at [0.5, 1)
+      assert length(haps) == 2
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.half())
+    end
+
+    test "composes correctly with ply for Strudel compatibility" do
+      # Strudel: sequence(1,2,3).ply(2).early(8).firstCycle().length == 6
+      pattern = parse("1 2 3") |> Pattern.ply(2) |> Pattern.early(8)
+      haps = Pattern.query(pattern, 0)
+      assert length(haps) == 6
     end
   end
 
   describe "late/2" do
-    test "shifts pattern later with wrap" do
+    test "shifts pattern later" do
+      # late(0.25) queries [-0.25, 0.75), returning events:
+      # - Previous cycle's sd [-0.5, 0) → shifted to [-0.25, 0.25), clipped to [0, 0.25)
+      # - Current bd [0, 0.5) → shifted to [0.25, 0.75)
+      # - Current sd [0.5, 1) → shifted to [0.75, 1.25), clipped to [0.75, 1)
       pattern = parse("bd sd") |> Pattern.late(0.25)
       haps = sort_by_time(Pattern.events(pattern))
 
-      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.new(1, 4))
-      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(3, 4))
+      assert length(haps) == 3
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(1, 4))
+      assert Time.eq?(Enum.at(haps, 2).part.begin, Time.new(3, 4))
     end
 
-    test "late wraps correctly at boundaries" do
+    test "late pulls previous events into current cycle" do
+      # late(0.75) on "bd" [0,1) → query [-0.75, 0.25) from underlying
+      # Returns the end of cycle -1's event and start of cycle 0's event
       pattern = parse("bd") |> Pattern.late(0.75)
-      [hap] = Pattern.query(pattern, 0)
-      assert Time.eq?(hap.part.begin, Time.new(3, 4))
+      haps = Pattern.query(pattern, 0)
+
+      # We get events from previous and current cycles
+      assert length(haps) == 2
+      assert Time.eq?(Enum.at(haps, 0).part.begin, Time.zero())
+      assert Time.eq?(Enum.at(haps, 1).part.begin, Time.new(3, 4))
     end
   end
 
@@ -447,6 +478,150 @@ defmodule UzuPattern.Pattern.TimeTest do
 
       haps = Pattern.query(pattern, 0)
       assert length(haps) == 8
+    end
+  end
+
+  describe "inside/3" do
+    test "applies function at finer scale" do
+      # Inside(4, rev) on 8 events: slow(4), rev, fast(4)
+      # This reverses groups of 2 events
+      pattern = parse("0 1 2 3 4 5 6 7") |> Pattern.inside(4, &Pattern.rev/1)
+      haps = sort_by_time(Pattern.events(pattern))
+
+      assert length(haps) == 8
+      # Events reversed within pairs: [1,0], [3,2], [5,4], [7,6]
+      # After fast(4), they get interleaved back
+    end
+
+    test "inside is equivalent to slow then fn then fast" do
+      pattern = parse("bd sd hh cp")
+
+      inside_result = Pattern.inside(pattern, 2, &Pattern.rev/1)
+
+      # Manual equivalent
+      manual_result =
+        pattern
+        |> Pattern.slow(2)
+        |> Pattern.rev()
+        |> Pattern.fast(2)
+
+      inside_haps = sort_by_time(Pattern.query(inside_result, 0))
+      manual_haps = sort_by_time(Pattern.query(manual_result, 0))
+
+      assert length(inside_haps) == length(manual_haps)
+
+      # Sound order should match
+      assert sounds(inside_haps) == sounds(manual_haps)
+    end
+
+    test "inside with factor 1 applies function unchanged" do
+      pattern = parse("bd sd hh cp")
+      result = Pattern.inside(pattern, 1, &Pattern.rev/1)
+
+      # Inside with factor 1: slow(1).rev().fast(1) = just rev()
+      expected = Pattern.rev(pattern)
+
+      result_sounds = sounds(sort_by_time(Pattern.events(result)))
+      expected_sounds = sounds(sort_by_time(Pattern.events(expected)))
+
+      assert result_sounds == expected_sounds
+    end
+  end
+
+  describe "outside/3" do
+    test "applies function at coarser scale" do
+      pattern = parse("<bd sd hh cp>") |> Pattern.outside(4, &Pattern.rev/1)
+
+      # Fast(4).rev().slow(4) reverses across 4 cycles
+      haps_0 = Pattern.query(pattern, 0)
+      haps_1 = Pattern.query(pattern, 1)
+      haps_2 = Pattern.query(pattern, 2)
+      haps_3 = Pattern.query(pattern, 3)
+
+      # After reversal, order should be reversed
+      assert length(haps_0) >= 1
+      assert length(haps_1) >= 1
+      assert length(haps_2) >= 1
+      assert length(haps_3) >= 1
+    end
+
+    test "outside is equivalent to fast then fn then slow" do
+      pattern = parse("bd sd")
+
+      outside_result = Pattern.outside(pattern, 2, &Pattern.rev/1)
+
+      # Manual equivalent
+      manual_result =
+        pattern
+        |> Pattern.fast(2)
+        |> Pattern.rev()
+        |> Pattern.slow(2)
+
+      outside_haps = sort_by_time(Pattern.query(outside_result, 0))
+      manual_haps = sort_by_time(Pattern.query(manual_result, 0))
+
+      assert length(outside_haps) == length(manual_haps)
+    end
+  end
+
+  describe "within/4" do
+    test "applies function only within time range" do
+      # Use fast(2) which doubles events in the range
+      pattern = parse("bd sd hh cp") |> Pattern.within(0.5, 1.0, fn p -> Pattern.fast(p, 2) end)
+      haps = sort_by_time(Pattern.events(pattern))
+
+      # Original: bd(0), sd(0.25), hh(0.5), cp(0.75)
+      # After within: first half unchanged, second half doubled
+      sound_list = sounds(haps)
+
+      # bd and sd unchanged (outside range)
+      assert "bd" in sound_list
+      assert "sd" in sound_list
+
+      # hh and cp appear twice each (inside range, fast(2))
+      hh_count = Enum.count(sound_list, &(&1 == "hh"))
+      cp_count = Enum.count(sound_list, &(&1 == "cp"))
+
+      assert hh_count == 2
+      assert cp_count == 2
+    end
+
+    test "events outside range preserved" do
+      pattern = parse("bd sd hh cp") |> Pattern.within(0.0, 0.25, fn p -> Pattern.fast(p, 2) end)
+      haps = sort_by_time(Pattern.events(pattern))
+
+      # First event (bd) gets doubled, others unchanged
+      # bd appears twice in first quarter, sd/hh/cp appear once each in their slots
+      bd_count = Enum.count(haps, fn h -> Hap.sound(h) == "bd" end)
+      sd_count = Enum.count(haps, fn h -> Hap.sound(h) == "sd" end)
+      hh_count = Enum.count(haps, fn h -> Hap.sound(h) == "hh" end)
+      cp_count = Enum.count(haps, fn h -> Hap.sound(h) == "cp" end)
+
+      assert bd_count == 2
+      assert sd_count == 1
+      assert hh_count == 1
+      assert cp_count == 1
+    end
+
+    test "within full range applies function to all" do
+      pattern = parse("bd sd hh cp")
+      result = Pattern.within(pattern, 0.0, 1.0, &Pattern.rev/1)
+
+      result_haps = sort_by_time(Pattern.events(result))
+      rev_haps = sort_by_time(Pattern.events(Pattern.rev(pattern)))
+
+      assert sounds(result_haps) == sounds(rev_haps)
+    end
+
+    test "within empty range leaves pattern unchanged" do
+      pattern = parse("bd sd hh cp")
+
+      # Range where no events fall
+      result = Pattern.within(pattern, 0.9, 0.95, fn p -> Pattern.fast(p, 10) end)
+      haps = Pattern.events(result)
+
+      # No events in 0.9-0.95, so pattern is unchanged
+      assert length(haps) == 4
     end
   end
 end
