@@ -39,10 +39,20 @@ defmodule UzuPattern.Pattern.Structure do
   end
 
   @doc """
-  Create a palindrome pattern (forward then backward within each cycle).
+  Create a palindrome pattern that alternates between forward and backward across cycles.
+
+  Applies `rev` to every other cycle, so the pattern plays forward on odd cycles
+  and backward on even cycles. Matches Strudel's palindrome behavior.
+
+  ## Examples
+
+      # With fast(2), shows both forward and backward in one cycle
+      s("a b c") |> palindrome() |> fast(2)
+      # Result: a b c c b a
   """
   def palindrome(%Pattern{} = pattern) do
-    Pattern.fastcat([pattern, rev(pattern)])
+    alias UzuPattern.Pattern.Conditional
+    Conditional.last_of(pattern, 2, &rev/1)
   end
 
   @doc """
