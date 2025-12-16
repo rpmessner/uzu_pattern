@@ -129,6 +129,58 @@ defmodule UzuPattern.Pattern.SignalTest do
     end
   end
 
+  describe "perlin/0" do
+    test "produces values between 0 and 1" do
+      sig = Signal.perlin()
+
+      for t <- 0..100 do
+        val = Signal.sample_at(sig, t / 10.0)
+        assert val >= 0.0
+        assert val <= 1.0
+      end
+    end
+
+    test "is deterministic for same time" do
+      sig = Signal.perlin()
+
+      val1 = Signal.sample_at(sig, 0.5)
+      val2 = Signal.sample_at(sig, 0.5)
+
+      assert val1 == val2
+    end
+
+    test "is smooth (no large jumps between neighboring samples)" do
+      sig = Signal.perlin()
+
+      # Sample at small intervals and check smoothness
+      samples = for i <- 0..100, do: Signal.sample_at(sig, i / 100.0)
+
+      # Check that consecutive samples don't differ by more than a threshold
+      # Perlin noise should be smooth
+      diffs =
+        samples
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.map(fn [a, b] -> abs(b - a) end)
+
+      max_diff = Enum.max(diffs)
+      # With smooth interpolation, max diff should be small (< 0.1 for 1/100 step)
+      assert max_diff < 0.1
+    end
+
+    test "values at integer boundaries match random values" do
+      sig = Signal.perlin()
+
+      # At integer boundaries, perlin should equal the random value for that integer
+      # Since we use smootherstep interpolation, at t=0, we get time_to_rand(0)
+      val_at_0 = Signal.sample_at(sig, 0.0)
+      val_at_1 = Signal.sample_at(sig, 1.0)
+      val_at_2 = Signal.sample_at(sig, 2.0)
+
+      # Each integer should give a different value (deterministic but varied)
+      assert val_at_0 != val_at_1 or val_at_1 != val_at_2
+    end
+  end
+
   describe "range/3" do
     test "scales values from [0,1] to [min,max]" do
       sig = Signal.sine() |> Signal.range(200, 2000)

@@ -165,6 +165,31 @@ defmodule UzuPattern.Pattern.Signal do
   # Random Signals
   # ============================================================================
 
+  # Xorshift algorithm for deterministic random values (matches Strudel)
+  defp xorwise(x) do
+    import Bitwise
+    x = x &&& 0xFFFFFFFF
+    a = bxor(x <<< 13, x) &&& 0xFFFFFFFF
+    b = bxor(a >>> 17, a) &&& 0xFFFFFFFF
+    bxor(b <<< 5, b) &&& 0xFFFFFFFF
+  end
+
+  # Convert time to integer seed (matches Strudel's timeToIntSeed)
+  defp time_to_int_seed(x) do
+    frac = x / 300 - trunc(x / 300)
+    xorwise(trunc(frac * 536_870_912))
+  end
+
+  # Convert integer seed to random value in [0, 1)
+  defp int_seed_to_rand(x) do
+    rem(abs(x), 536_870_912) / 536_870_912
+  end
+
+  # Deterministic random value for a given time (matches Strudel's timeToRand)
+  defp time_to_rand(x) do
+    abs(int_seed_to_rand(time_to_int_seed(x)))
+  end
+
   @doc """
   Random signal producing values from 0 to 1.
 
@@ -180,10 +205,7 @@ defmodule UzuPattern.Pattern.Signal do
   """
   def rand do
     signal(fn t ->
-      # Seed based on integer cycle for reproducibility
-      cycle = trunc(t)
-      :rand.seed(:exsss, {cycle, cycle * 7, cycle * 13})
-      :rand.uniform()
+      time_to_rand(t)
     end)
   end
 
@@ -201,9 +223,46 @@ defmodule UzuPattern.Pattern.Signal do
   """
   def irand(n) when is_integer(n) and n > 0 do
     signal(fn t ->
-      cycle = trunc(t)
-      :rand.seed(:exsss, {cycle, cycle * 7, cycle * 13})
-      :rand.uniform(n) - 1
+      trunc(time_to_rand(t) * n)
+    end)
+  end
+
+  @doc """
+  Perlin noise signal producing smooth random values from 0 to 1.
+
+  Uses Perlin's smootherstep interpolation between random values at
+  integer cycle boundaries, creating smooth continuous noise.
+
+  This matches Strudel's perlin implementation for behavioral parity.
+
+  ## Examples
+
+      iex> sig = Signal.perlin()
+      iex> [h1] = Pattern.query(sig, 0)
+      iex> [h2] = Pattern.query(sig, 0)
+      iex> h1.value.value == h2.value.value  # Deterministic
+      true
+
+      # Smooth filter sweep
+      # s("bd*4 hh*8") |> lpf(perlin() |> range(500, 8000))
+  """
+  def perlin do
+    signal(fn t ->
+      # Get neighboring integer cycles
+      ta = Float.floor(t * 1.0)
+      tb = ta + 1
+
+      # Perlin's smootherstep interpolation: 6x^5 - 15x^4 + 10x^3
+      smoother_step = fn x ->
+        6.0 * :math.pow(x, 5) - 15.0 * :math.pow(x, 4) + 10.0 * :math.pow(x, 3)
+      end
+
+      # Interpolate between random values at ta and tb
+      frac = t - ta
+      a = time_to_rand(ta)
+      b = time_to_rand(tb)
+
+      a + smoother_step.(frac) * (b - a)
     end)
   end
 
