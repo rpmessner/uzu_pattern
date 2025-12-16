@@ -55,17 +55,24 @@ defmodule UzuPattern.Interpreter do
     inner = extract_inner(children)
     base_pattern = interpret_node(inner)
 
-    # Apply modifiers
-    case node do
-      %{repeat: n} when is_integer(n) and n > 1 ->
-        Pattern.fast(base_pattern, n)
+    # Apply modifiers (in order: speed changes first, then probability)
+    pattern =
+      cond do
+        is_integer(node[:repeat]) and node[:repeat] > 1 ->
+          Pattern.fast(base_pattern, node[:repeat])
 
-      %{division: div} when is_number(div) ->
-        Pattern.slow(base_pattern, div)
+        is_integer(node[:replicate]) and node[:replicate] > 1 ->
+          Pattern.fast(base_pattern, node[:replicate])
 
-      _ ->
-        base_pattern
-    end
+        is_number(node[:division]) ->
+          Pattern.slow(base_pattern, node[:division])
+
+        true ->
+          base_pattern
+      end
+
+    # Apply probability if present
+    apply_probability(pattern, node[:probability])
   end
 
   # Alternation (slowcat) with optional modifiers
@@ -74,30 +81,55 @@ defmodule UzuPattern.Interpreter do
     patterns = Enum.map(items, &interpret_item/1)
     base_pattern = Pattern.slowcat(patterns)
 
-    # Apply modifiers
-    case node do
-      %{repeat: n} when is_integer(n) and n > 1 ->
-        Pattern.fast(base_pattern, n)
+    # Apply modifiers (in order: speed changes first, then probability)
+    pattern =
+      cond do
+        is_integer(node[:repeat]) and node[:repeat] > 1 ->
+          Pattern.fast(base_pattern, node[:repeat])
 
-      %{division: div} when is_number(div) ->
-        Pattern.slow(base_pattern, div)
+        is_integer(node[:replicate]) and node[:replicate] > 1 ->
+          Pattern.fast(base_pattern, node[:replicate])
 
-      _ ->
-        base_pattern
-    end
+        is_number(node[:division]) ->
+          Pattern.slow(base_pattern, node[:division])
+
+        true ->
+          base_pattern
+      end
+
+    # Apply probability if present
+    apply_probability(pattern, node[:probability])
   end
 
   # Polymetric
   defp interpret_node(%{type: :polymetric, children: children} = node) do
     groups = extract_groups(children)
 
-    case node do
-      %{steps: steps} when is_integer(steps) ->
-        interpret_polymetric_stepped(groups, steps)
+    # First build the base polymetric pattern
+    base_pattern =
+      case node do
+        %{steps: steps} when is_integer(steps) ->
+          interpret_polymetric_stepped(groups, steps)
 
-      _ ->
-        interpret_polymetric(groups)
-    end
+        _ ->
+          interpret_polymetric(groups)
+      end
+
+    # Apply speed modifiers
+    pattern =
+      cond do
+        is_integer(node[:repeat]) and node[:repeat] > 1 ->
+          Pattern.fast(base_pattern, node[:repeat])
+
+        is_number(node[:division]) ->
+          Pattern.slow(base_pattern, node[:division])
+
+        true ->
+          base_pattern
+      end
+
+    # Apply probability if present
+    apply_probability(pattern, node[:probability])
   end
 
   # Random choice
@@ -381,9 +413,93 @@ defmodule UzuPattern.Interpreter do
   # Polymetric Interpretation
   # ============================================================================
 
+  # Polymetric without explicit steps - align all groups to first group's length
+  # In Strudel: {bd sd, hh hh hh} aligns second group to first group's 2-step cycle
   defp interpret_polymetric(groups) do
-    patterns = Enum.map(groups, &interpret_group/1)
+    # Get item counts for each group
+    group_counts =
+      Enum.map(groups, fn group ->
+        items = extract_sequence_items(group)
+        length(items)
+      end)
+
+    # First group's count is the reference
+    first_count = List.first(group_counts) || 1
+
+    # Interpret each group, scaling to align with first group's step count
+    patterns =
+      groups
+      |> Enum.zip(group_counts)
+      |> Enum.map(fn {group, count} ->
+        base_pattern = interpret_group(group)
+
+        if count == first_count or count == 0 do
+          base_pattern
+        else
+          # Scale pattern so `count` items align with `first_count` steps
+          # If count > first_count, slow down (stretch) the pattern
+          # If count < first_count, speed up (compress) the pattern
+          # Scale factor = count / first_count (e.g., 3/2 for 3 items -> 2 steps)
+          scale_pattern_time(base_pattern, count, first_count)
+        end
+      end)
+
     Pattern.stack(patterns)
+  end
+
+  # Scale pattern time so original_steps items fit into target_steps
+  # If original has 3 items and target has 2, stretch so only 2 items fit per cycle
+  # This is equivalent to slow(3/2) - multiply times by 3/2
+  defp scale_pattern_time(pattern, original_steps, target_steps) do
+    # scale = original/target (e.g., 3/2 means pattern takes 1.5 cycles)
+    scale = T.new(original_steps, target_steps)
+    inverse_scale = T.new(target_steps, original_steps)
+
+    Pattern.from_cycles(fn cycle ->
+      # For output cycle N, we need to query the portion of the stretched pattern
+      # that falls in [N, N+1)
+      #
+      # Stretched event at time T becomes T * scale
+      # So events in output [N, N+1) come from inner [N/scale, (N+1)/scale)
+      inner_start = T.mult(T.new(cycle), inverse_scale)
+      inner_end = T.add(inner_start, inverse_scale)
+
+      # Query the inner cycle(s) that overlap
+      start_cycle = T.floor(inner_start) |> T.to_float() |> trunc()
+      end_cycle = T.floor(inner_end) |> T.to_float() |> trunc()
+
+      start_cycle..end_cycle
+      |> Enum.flat_map(fn inner_cycle ->
+        pattern
+        |> Pattern.query(inner_cycle)
+        |> Enum.filter(fn hap ->
+          # Calculate absolute time of this event
+          abs_begin = T.add(hap.part.begin, T.new(inner_cycle))
+          abs_end = T.add(hap.part.end, T.new(inner_cycle))
+          # Filter events that intersect with [inner_start, inner_end)
+          T.lt?(abs_begin, inner_end) and T.gt?(abs_end, inner_start)
+        end)
+        |> Enum.map(fn hap ->
+          # Scale times: multiply by scale factor, shift to output cycle
+          abs_begin = T.add(hap.part.begin, T.new(inner_cycle))
+          abs_end = T.add(hap.part.end, T.new(inner_cycle))
+
+          # Stretched times
+          new_begin = T.mult(abs_begin, scale)
+          new_end = T.mult(abs_end, scale)
+
+          # Shift to current output cycle
+          new_begin = T.sub(new_begin, T.new(cycle))
+          new_end = T.sub(new_end, T.new(cycle))
+
+          # Clip to [0, 1)
+          new_begin = T.max(new_begin, T.zero())
+          new_end = T.min(new_end, T.one())
+
+          set_hap_timespan(hap, new_begin, new_end)
+        end)
+      end)
+    end)
   end
 
   defp interpret_polymetric_stepped(groups, steps) do
@@ -456,4 +572,20 @@ defmodule UzuPattern.Interpreter do
     timespan = TimeSpan.new(begin_time, end_time)
     %{hap | whole: timespan, part: timespan}
   end
+
+  # ============================================================================
+  # Probability Helper
+  # ============================================================================
+
+  # Apply probability modifier to a pattern using degrade_by
+  # probability of 0.5 means 50% chance to play (keep 50% of events)
+  defp apply_probability(pattern, nil), do: pattern
+
+  defp apply_probability(pattern, prob) when is_number(prob) and prob >= 0 and prob <= 1 do
+    # degrade_by removes events where random <= probability
+    # So to keep `prob` fraction of events, we remove (1 - prob) fraction
+    Pattern.degrade_by(pattern, 1.0 - prob)
+  end
+
+  defp apply_probability(pattern, _), do: pattern
 end
