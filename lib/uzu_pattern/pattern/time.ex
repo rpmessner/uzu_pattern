@@ -8,6 +8,8 @@ defmodule UzuPattern.Pattern.Time do
   - `ply/2` - Repeat each event N times
   - `compress/3`, `zoom/3` - Squeeze or extract time windows
   - `linger/2` - Loop first portion of pattern
+  - `inside/3`, `outside/3` - Apply functions at different time scales
+  - `within/4` - Apply functions only within a time range
 
   ## Pattern Arguments
 
@@ -187,34 +189,22 @@ defmodule UzuPattern.Pattern.Time do
   end
 
   @doc """
-  Shift pattern earlier in time.
+  Shift pattern earlier in time (Tidal's <~ operator).
+
+  Uses query time transformation for proper composition with other
+  transformations. When querying cycle 0, actually queries cycle+offset
+  from the underlying pattern, then shifts results back.
   """
   def early(%Pattern{} = pattern, amount) do
     amt = T.ensure(amount)
-    neg_amt = T.mult(amt, T.new(-1))
 
-    Pattern.from_cycles(fn cycle ->
-      pattern
-      |> Pattern.query(cycle)
-      |> Enum.map(fn hap ->
-        shifted = Hap.shift(hap, neg_amt)
-        # Wrap if onset went negative
-        onset = Hap.onset(shifted) || shifted.part.begin
-
-        if T.lt?(onset, T.zero()) do
-          Hap.shift(shifted, T.one())
-        else
-          shifted
-        end
-      end)
-      |> Enum.sort_by(fn hap ->
-        T.to_float(Hap.onset(hap) || hap.part.begin)
-      end)
-    end)
+    pattern
+    |> Pattern.with_query_time(fn t -> T.add(t, amt) end)
+    |> Pattern.with_hap_time(fn t -> T.sub(t, amt) end)
   end
 
   @doc """
-  Shift pattern later in time.
+  Shift pattern later in time (Tidal's ~> operator).
   """
   def late(%Pattern{} = pattern, amount) do
     amt = T.ensure(amount)
@@ -353,6 +343,109 @@ defmodule UzuPattern.Pattern.Time do
         T.to_float(Hap.onset(hap) || hap.part.begin)
       end)
     end)
+  end
+
+  @doc """
+  Apply a transformation function 'inside' a cycle.
+
+  Slows the pattern by factor, applies the function, then speeds back up.
+  This lets functions that operate at the cycle level work at finer scales.
+
+  Equivalent to: `fn.(pattern |> slow(factor)) |> fast(factor)`
+
+  ## Examples
+
+      # Reverse groups of 4 events within each cycle
+      s("0 1 2 3 4 5 6 7") |> inside(4, &Structure.rev/1)
+      # Same as: s("0 1 2 3 4 5 6 7") |> slow(4) |> rev() |> fast(4)
+  """
+  def inside(%Pattern{} = pattern, factor, func) when is_function(func, 1) and is_number(factor) do
+    pattern
+    |> slow(factor)
+    |> func.()
+    |> fast(factor)
+  end
+
+  @doc """
+  Apply a transformation function 'outside' a cycle.
+
+  Speeds the pattern by factor, applies the function, then slows back down.
+  This lets functions operate at a coarser scale spanning multiple cycles.
+
+  Equivalent to: `fn.(pattern |> fast(factor)) |> slow(factor)`
+
+  ## Examples
+
+      # Reverse across 4 cycles instead of within each cycle
+      s("<[0 1] 2 [3 4] 5>") |> outside(4, &Structure.rev/1)
+      # Same as: s("<[0 1] 2 [3 4] 5>") |> fast(4) |> rev() |> slow(4)
+  """
+  def outside(%Pattern{} = pattern, factor, func) when is_function(func, 1) and is_number(factor) do
+    pattern
+    |> fast(factor)
+    |> func.()
+    |> slow(factor)
+  end
+
+  @doc """
+  Apply a function only to events within a time range of each cycle.
+
+  Events outside the range are left unchanged. The function is applied
+  to a filtered pattern containing only events in [start_time, end_time),
+  then the results are combined with the unaffected events.
+
+  ## Parameters
+
+  - `start_time` - Start of range (0.0 to 1.0)
+  - `end_time` - End of range (0.0 to 1.0), must be > start_time
+  - `func` - Transformation function to apply
+
+  ## Examples
+
+      # Reverse only the second half of each cycle
+      s("bd sd hh cp") |> within(0.5, 1.0, &Structure.rev/1)
+
+      # Speed up only the first quarter
+      s("bd sd hh cp") |> within(0.0, 0.25, &fast(&1, 2))
+  """
+  def within(%Pattern{} = pattern, start_time, end_time, func)
+      when is_function(func, 1) and is_number(start_time) and is_number(end_time) and
+             start_time < end_time do
+    start_t = T.from_float(start_time)
+    end_t = T.from_float(end_time)
+
+    # Pattern with only events in the range
+    inside_range =
+      Pattern.from_cycles(fn cycle ->
+        pattern
+        |> Pattern.query(cycle)
+        |> Enum.filter(fn hap ->
+          onset = Hap.onset(hap) || hap.part.begin
+          cycle_pos = cycle_position(onset)
+          T.gte?(cycle_pos, start_t) and T.lt?(cycle_pos, end_t)
+        end)
+      end)
+
+    # Pattern with only events outside the range
+    outside_range =
+      Pattern.from_cycles(fn cycle ->
+        pattern
+        |> Pattern.query(cycle)
+        |> Enum.filter(fn hap ->
+          onset = Hap.onset(hap) || hap.part.begin
+          cycle_pos = cycle_position(onset)
+          T.lt?(cycle_pos, start_t) or T.gte?(cycle_pos, end_t)
+        end)
+      end)
+
+    # Apply function to inside, stack with outside
+    Pattern.stack([func.(inside_range), outside_range])
+  end
+
+  # Get the cycle position (fractional part) of a time
+  defp cycle_position(time) do
+    float_time = T.to_float(time)
+    T.from_float(float_time - Float.floor(float_time))
   end
 
   # Helper: scale and offset a hap's timespans
