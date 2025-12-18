@@ -17,8 +17,6 @@ defmodule UzuPattern.Integration.MiniNotationTest do
 
   defp parse(str), do: UzuPattern.parse(str)
   defp parse_events(str), do: Pattern.query(parse(str), 0)
-
-  # Strudel-style helpers
   defp sounds(haps), do: Enum.map(haps, &Hap.sound/1)
 
   # Sort haps by begin time
@@ -823,12 +821,22 @@ defmodule UzuPattern.Integration.MiniNotationTest do
   end
 
   # ============================================================================
-  # Skip: Empty brackets not supported
+  # Empty Brackets (Rest)
   # ============================================================================
 
-  @tag :skip
-  test "empty brackets" do
+  test "empty brackets act as rest" do
     haps = parse_events("bd [] sd")
-    assert length(haps) >= 2
+    # Empty brackets act as a rest, occupying time but producing no sound
+    assert length(haps) == 2
+
+    [bd_hap, sd_hap] = haps
+    assert bd_hap.value.s == "bd"
+    assert sd_hap.value.s == "sd"
+
+    # bd should be at [0, 1/3), empty rest at [1/3, 2/3), sd at [2/3, 1)
+    assert bd_hap.part.begin == Ratio.new(0)
+    assert bd_hap.part.end == Ratio.new(1, 3)
+    assert sd_hap.part.begin == Ratio.new(2, 3)
+    assert sd_hap.part.end == Ratio.new(1)
   end
 end

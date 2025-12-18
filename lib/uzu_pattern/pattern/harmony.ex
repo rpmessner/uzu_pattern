@@ -7,6 +7,12 @@ defmodule UzuPattern.Pattern.Harmony do
   - `form/1` - Load a chord progression from RealBook as a pattern
   - `scale/1` - Map numbers to scale degrees (static scale)
   - `scale/0` - Map numbers using scale inferred from chord context
+  - `transpose/2` - Transpose notes by semitones or interval
+  - `scale_transpose/3` - Transpose notes by scale steps
+  - `octave/2` - Shift notes by octaves
+  - `voicing/1,2` - Apply chord voicings to chord patterns
+  - `root_notes/2` - Extract root notes from chord patterns
+  - `chord/2` - Set chord context on pattern haps
 
   ## Melody over changes
 
@@ -18,13 +24,138 @@ defmodule UzuPattern.Pattern.Harmony do
       # Simple case - fixed scale
       n("0 2 4") |> scale("C:minor")
 
-  All music theory computations (scale degrees → MIDI, chord → scale inference)
-  are delegated to the Harmony library.
+  ## Chord voicings
+
+      # Voice chords with jazz left-hand voicings
+      form("Autumn Leaves") |> voicing()
+
+      # Extract bass line from chord progression
+      form("Autumn Leaves") |> root_notes(2)
+
+  All music theory computations (scale degrees → MIDI, chord → scale inference,
+  voicing dictionaries) are delegated to the Harmony library.
   """
 
   alias UzuPattern.Pattern
   alias UzuPattern.Hap
   alias UzuPattern.TimeSpan
+
+  # ============================================================
+  # transpose/2 - Transpose notes by interval or semitones
+  # ============================================================
+
+  @doc """
+  Transpose notes by an interval or number of semitones.
+
+  The amount can be given as:
+  - A number of semitones (e.g., 7 for perfect fifth)
+  - An interval string using standard notation (e.g., "5P" for perfect fifth)
+
+  Interval notation: `<number><quality>` where quality is:
+  - P = perfect (for 1, 4, 5, 8)
+  - M = major (for 2, 3, 6, 7)
+  - m = minor
+  - A = augmented
+  - d = diminished
+
+  Common intervals:
+  - 1P = unison (0 semitones)
+  - 2M = major second (2)
+  - 3m = minor third (3)
+  - 3M = major third (4)
+  - 4P = perfect fourth (5)
+  - 5P = perfect fifth (7)
+  - 8P = octave (12)
+
+  ## Examples
+
+      # Transpose by semitones
+      note("c4 e4 g4") |> transpose(7)
+      # C4 → G4, E4 → B4, G4 → D5
+
+      # Transpose by interval string
+      note("c4 e4 g4") |> transpose("5P")
+      # Same result with proper enharmonic spelling
+
+      # Pattern the transposition
+      note("c4") |> transpose("<0 7 12>")
+      # Cycles through unison, fifth, octave
+
+      # Works with MIDI note numbers
+      n("0 4 7") |> scale("C:major") |> transpose(5)
+  """
+  def transpose(pattern, amount) when is_number(amount) do
+    Pattern.from_cycles(fn cycle ->
+      pattern
+      |> Pattern.query(cycle)
+      |> Enum.map(&transpose_hap(&1, amount))
+    end)
+  end
+
+  def transpose(pattern, amount) when is_binary(amount) do
+    # Check if it's a pattern string or an interval
+    if pattern_string?(amount) do
+      # It's a pattern - parse and apply per-event
+      amount_pattern = UzuParser.Grammar.parse(amount) |> UzuPattern.Interpreter.interpret()
+
+      Pattern.from_cycles(fn cycle ->
+        pattern_haps = Pattern.query(pattern, cycle)
+        amount_haps = Pattern.query(amount_pattern, cycle)
+
+        Enum.map(pattern_haps, fn hap ->
+          # Find the amount value at this hap's time
+          semitones =
+            Enum.find_value(amount_haps, 0, fn amt_hap ->
+              if TimeSpan.intersection(hap.part, amt_hap.part) do
+                parse_transpose_amount(amt_hap.value)
+              end
+            end)
+
+          transpose_hap(hap, semitones)
+        end)
+      end)
+    else
+      # It's an interval string like "5P" or "3M"
+      semitones = Harmony.Interval.semitones(amount) || 0
+      transpose(pattern, semitones)
+    end
+  end
+
+  defp pattern_string?(str) do
+    # Check if string looks like a pattern (has spaces, <>, etc.) vs interval
+    String.contains?(str, [" ", "<", ">", "[", "]", "{", "}"]) or
+      Regex.match?(~r/^\d+$/, str)
+  end
+
+  defp parse_transpose_amount(%{s: s}) when is_binary(s), do: parse_transpose_value(s)
+  defp parse_transpose_amount(%{value: v}) when is_number(v), do: v
+  defp parse_transpose_amount(v) when is_number(v), do: v
+  defp parse_transpose_amount(_), do: 0
+
+  defp parse_transpose_value(str) do
+    case Integer.parse(str) do
+      {n, ""} -> n
+      _ -> Harmony.Interval.semitones(str) || 0
+    end
+  end
+
+  defp transpose_hap(hap, semitones) when is_number(semitones) do
+    note = Map.get(hap.value, :note)
+
+    cond do
+      is_number(note) ->
+        # MIDI note number - just add semitones
+        %{hap | value: Map.put(hap.value, :note, note + semitones)}
+
+      is_binary(note) and note != "" ->
+        # Note string - use Harmony.Transpose for proper enharmonics
+        transposed = Harmony.Transpose.transpose(note, Harmony.Interval.from_semitones(semitones))
+        %{hap | value: Map.put(hap.value, :note, transposed)}
+
+      true ->
+        hap
+    end
+  end
 
   # ============================================================
   # form/1 - Load chord progression as a pattern
@@ -331,16 +462,20 @@ defmodule UzuPattern.Pattern.Harmony do
   # ============================================================
 
   defp apply_scale_to_hap(hap, scale_name, octave \\ 3) do
-    # For Haps, numeric value (degree) could be in:
+    # For Haps, numeric value (degree) could be in (Strudel-compatible order):
+    # - hap.value.note (from note() function - checked first like Strudel)
     # - hap.value.n (from n() function)
     # - hap.value.value (signal patterns)
     # - hap.value.s parsed as number (explicit degree notation)
+    note_val = Map.get(hap.value, :note)
     n_val = Map.get(hap.value, :n)
     sound = Map.get(hap.value, :s, "")
     value = Map.get(hap.value, :value)
 
     degree =
       cond do
+        is_binary(note_val) -> parse_number(note_val)
+        is_number(note_val) -> note_val
         is_number(n_val) -> n_val
         is_number(value) -> value
         is_binary(sound) -> parse_number(sound)
@@ -361,5 +496,244 @@ defmodule UzuPattern.Pattern.Harmony do
       {n, ""} -> n
       _ -> nil
     end
+  end
+
+  # ============================================================
+  # scale_transpose/2 - Transpose notes by scale steps
+  # ============================================================
+
+  @doc """
+  Transpose notes by scale steps rather than semitones.
+
+  Unlike `transpose/2` which moves by chromatic steps, `scale_transpose/2` moves
+  by diatonic scale degrees. The scale must be specified, and the note must be
+  in that scale.
+
+  ## Examples
+
+      # Move up 2 scale steps in C major
+      note("c4") |> scale_transpose("C:major", 2)
+      # C4 → E4
+
+      # Move down 1 scale step
+      note("c4") |> scale_transpose("C:major", -1)
+      # C4 → B3
+
+      # Pattern the offset
+      note("c4") |> scale_transpose("C:major", "<0 2 4>")
+      # Cycles through C4, E4, G4
+
+      # Works with form context
+      n("0 2 4") |> form("Autumn Leaves") |> scale() |> scale_transpose(2)
+  """
+  def scale_transpose(pattern, scale_name, offset) when is_binary(scale_name) and is_number(offset) do
+    {harmony_scale_name, _octave} = parse_scale_name(scale_name)
+
+    Pattern.from_cycles(fn cycle ->
+      pattern
+      |> Pattern.query(cycle)
+      |> Enum.map(&scale_transpose_hap(&1, harmony_scale_name, offset))
+    end)
+  end
+
+  def scale_transpose(pattern, scale_name, offset_pattern) when is_binary(scale_name) and is_binary(offset_pattern) do
+    {harmony_scale_name, _octave} = parse_scale_name(scale_name)
+    offset_pat = UzuParser.Grammar.parse(offset_pattern) |> UzuPattern.Interpreter.interpret()
+
+    Pattern.from_cycles(fn cycle ->
+      pattern_haps = Pattern.query(pattern, cycle)
+      offset_haps = Pattern.query(offset_pat, cycle)
+
+      Enum.map(pattern_haps, fn hap ->
+        offset =
+          Enum.find_value(offset_haps, 0, fn off_hap ->
+            if TimeSpan.intersection(hap.part, off_hap.part) do
+              parse_offset_value(off_hap.value)
+            end
+          end)
+
+        scale_transpose_hap(hap, harmony_scale_name, offset)
+      end)
+    end)
+  end
+
+  defp parse_offset_value(%{s: s}) when is_binary(s), do: parse_number(s) || 0
+  defp parse_offset_value(%{n: n}) when is_number(n), do: n
+  defp parse_offset_value(%{value: v}) when is_number(v), do: v
+  defp parse_offset_value(v) when is_number(v), do: v
+  defp parse_offset_value(_), do: 0
+
+  defp scale_transpose_hap(hap, scale_name, offset) do
+    note = Map.get(hap.value, :note)
+
+    cond do
+      is_binary(note) and note != "" ->
+        # Note string - use Harmony.Scale.scale_transpose
+        case Harmony.Scale.scale_transpose(scale_name, offset, note) do
+          nil -> hap
+          transposed -> %{hap | value: Map.put(hap.value, :note, transposed)}
+        end
+
+      true ->
+        # Can't scale transpose MIDI numbers without knowing what note they represent
+        hap
+    end
+  end
+
+  # ============================================================
+  # root_notes/2 - Extract root notes from chord pattern
+  # ============================================================
+
+  @doc """
+  Extract root notes from a chord pattern at a given octave.
+
+  Takes a pattern that yields chord symbols and converts them to their root
+  notes at the specified octave.
+
+  ## Examples
+
+      # Get roots of a chord progression
+      form("Autumn Leaves") |> root_notes(3)
+      # Cm7 → C3, F7 → F3, etc.
+
+      # Use with a simple chord pattern
+      s("Cm7 F7 Bbmaj7 Ebmaj7") |> root_notes(4)
+      # Yields C4, F4, Bb4, Eb4
+  """
+  def root_notes(pattern, octave \\ 4) when is_number(octave) do
+    Pattern.from_cycles(fn cycle ->
+      pattern
+      |> Pattern.query(cycle)
+      |> Enum.map(&extract_root_note_hap(&1, octave))
+    end)
+  end
+
+  defp extract_root_note_hap(hap, octave) do
+    chord_symbol = Map.get(hap.value, :s, "")
+
+    case Harmony.Chord.root_note(chord_symbol) do
+      nil ->
+        hap
+
+      root ->
+        note_with_octave = "#{root}#{octave}"
+        midi = Harmony.Note.midi(note_with_octave)
+        %{hap | value: Map.put(hap.value, :note, midi)}
+    end
+  end
+
+  # ============================================================
+  # voicing/1, voicing/2 - Apply chord voicings
+  # ============================================================
+
+  @doc """
+  Apply chord voicings to a pattern of chord symbols.
+
+  Takes a pattern yielding chord symbols and expands each chord into its
+  voiced notes using the specified voicing dictionary.
+
+  ## Options
+
+  - `:dictionary` - Which voicing dictionary to use (default: `:lefthand`)
+  - `:inversion` - Which inversion to use, 0-indexed (default: 0)
+
+  ## Examples
+
+      # Voice a chord progression with lefthand voicings
+      form("Autumn Leaves") |> voicing()
+
+      # Use guidetone voicings (3rd and 7th only)
+      form("Autumn Leaves") |> voicing(dictionary: :guidetones)
+
+      # Use triad voicings
+      s("C Am F G") |> voicing(dictionary: :triads)
+  """
+  def voicing(pattern, opts \\ []) do
+    dictionary = Keyword.get(opts, :dictionary, :lefthand)
+    inversion = Keyword.get(opts, :inversion, 0)
+    base_octave = Keyword.get(opts, :octave, 4)
+
+    Pattern.from_cycles(fn cycle ->
+      pattern
+      |> Pattern.query(cycle)
+      |> Enum.flat_map(&voice_chord_hap(&1, dictionary, inversion, base_octave))
+    end)
+  end
+
+  defp voice_chord_hap(hap, dictionary, inversion, base_octave) do
+    chord_symbol = Map.get(hap.value, :s, "")
+
+    case Harmony.Voicing.voice(chord_symbol, dictionary: dictionary, inversion: inversion) do
+      nil ->
+        [hap]
+
+      notes ->
+        # Create a hap for each voiced note, stacking them
+        notes
+        |> Enum.map(fn note_pc ->
+          # Add octave to the pitch class
+          note_with_octave = "#{note_pc}#{base_octave}"
+          midi = Harmony.Note.midi(note_with_octave)
+
+          %{hap | value: Map.put(hap.value, :note, midi)}
+        end)
+    end
+  end
+
+  # ============================================================
+  # chord/2 - Set chord context on pattern
+  # ============================================================
+
+  @doc """
+  Set chord context on a pattern's haps.
+
+  This stores the chord symbol in each hap's context, which can be used by
+  other functions like `scale/0` to infer the appropriate scale.
+
+  ## Examples
+
+      # Set a static chord context
+      n("0 2 4") |> chord("Cm7") |> scale()
+
+      # Pattern the chord
+      n("0 2 4") |> chord("<Cm7 F7 Bbmaj7>") |> scale()
+  """
+  def chord(pattern, chord_symbol) when is_binary(chord_symbol) do
+    if pattern_string?(chord_symbol) do
+      # It's a pattern - parse and apply per-event
+      chord_pattern = UzuParser.Grammar.parse(chord_symbol) |> UzuPattern.Interpreter.interpret()
+
+      Pattern.from_cycles(fn cycle ->
+        pattern_haps = Pattern.query(pattern, cycle)
+        chord_haps = Pattern.query(chord_pattern, cycle)
+
+        Enum.map(pattern_haps, fn hap ->
+          chord_sym =
+            Enum.find_value(chord_haps, "", fn chord_hap ->
+              if TimeSpan.intersection(hap.part, chord_hap.part) do
+                extract_chord_symbol(chord_hap.value)
+              end
+            end)
+
+          set_chord_context(hap, chord_sym)
+        end)
+      end)
+    else
+      # Static chord symbol
+      Pattern.from_cycles(fn cycle ->
+        pattern
+        |> Pattern.query(cycle)
+        |> Enum.map(&set_chord_context(&1, chord_symbol))
+      end)
+    end
+  end
+
+  defp extract_chord_symbol(%{s: s}) when is_binary(s), do: s
+  defp extract_chord_symbol(_), do: ""
+
+  defp set_chord_context(hap, chord_symbol) do
+    context = Map.get(hap, :context, %{})
+    new_context = Map.put(context, :chord, chord_symbol)
+    %{hap | context: new_context}
   end
 end

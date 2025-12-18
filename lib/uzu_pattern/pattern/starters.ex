@@ -47,33 +47,32 @@ defmodule UzuPattern.Pattern.Starters do
       n("<0 1> 2 3")
   """
   def n(mini_notation) when is_binary(mini_notation) do
-    base_pattern = parse_to_pattern(mini_notation)
+    # Parse mini-notation then convert numeric strings to sample indices
+    # Numbers become :n (sample index), non-numbers stay as :s
+    parse_to_pattern(mini_notation)
+    |> Pattern.fmap(fn value ->
+      case Map.pop(value, :s) do
+        {nil, value} ->
+          value
 
-    # Transform: convert sound values to :n parameters when they're numbers
-    Pattern.from_cycles(fn cycle ->
-      base_pattern
-      |> Pattern.query(cycle)
-      |> Enum.map(fn hap ->
-        case hap.value[:s] do
-          nil ->
-            hap
+        {sound_val, rest} ->
+          # Convert numeric strings to numbers for sample indices
+          converted = maybe_convert_to_number(sound_val)
 
-          sound_str ->
-            case Integer.parse(to_string(sound_str)) do
-              {n, ""} ->
-                new_value = hap.value |> Map.delete(:s) |> Map.put(:n, n)
-                %{hap | value: new_value}
-
-              _ ->
-                hap
-            end
-        end
-      end)
+          if is_number(converted) do
+            Map.put(rest, :n, converted)
+          else
+            Map.put(rest, :s, sound_val)
+          end
+      end
     end)
   end
 
   @doc """
   Create a note/pitch pattern from mini-notation.
+
+  Maps parsed values to the `note` key for pitch/frequency handling.
+  Numeric strings are converted to numbers (MIDI note numbers).
 
   ## Examples
 
@@ -81,7 +80,20 @@ defmodule UzuPattern.Pattern.Starters do
       note("60 64 67")  # MIDI notes
   """
   def note(mini_notation) when is_binary(mini_notation) do
+    # Parse mini-notation (creates pattern with :s key)
+    # Then map :s to :note for pitch patterns
+    # Convert numeric strings to numbers for MIDI note handling
     parse_to_pattern(mini_notation)
+    |> Pattern.fmap(fn value ->
+      case Map.pop(value, :s) do
+        {nil, value} ->
+          value
+
+        {note_val, rest} ->
+          # Convert numeric strings to numbers for MIDI notes
+          Map.put(rest, :note, maybe_convert_to_number(note_val))
+      end
+    end)
   end
 
   @doc """
@@ -107,4 +119,22 @@ defmodule UzuPattern.Pattern.Starters do
     ast = UzuParser.Grammar.parse(mini_notation)
     Interpreter.interpret(ast)
   end
+
+  # Convert numeric strings to numbers (Strudel convention)
+  # Only used in note() and n() where numeric values have semantic meaning
+  # s() keeps all values as strings since they are sample names
+  defp maybe_convert_to_number(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} ->
+        int
+
+      _ ->
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> value
+        end
+    end
+  end
+
+  defp maybe_convert_to_number(value), do: value
 end
