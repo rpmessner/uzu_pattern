@@ -231,13 +231,14 @@ defmodule UzuPattern.Pattern do
       iex> event.sound
       "bd"
   """
-  def pure(value, opts \\ []) when is_binary(value) do
+  def pure(value, opts \\ []) do
     sample = Keyword.get(opts, :sample)
     params = Keyword.get(opts, :params, %{})
     loc_start = Keyword.get(opts, :start)
     loc_end = Keyword.get(opts, :end)
 
-    # Build value map: s is sound, n is sample (if present), plus params
+    # Build value map: s is sound/note value, n is sample (if present), plus params
+    # Value can be a string ("bd", "c3") or number (60 for MIDI note)
     hap_value =
       %{s: value}
       |> maybe_put(:n, sample)
@@ -667,17 +668,143 @@ defmodule UzuPattern.Pattern do
 
   # ============================================================================
   # Effects (delegated to Pattern.Effects)
+  # All parameter names use superdough canonical names internally.
   # ============================================================================
 
   defdelegate set_param(pattern, key, value), to: Effects
+
+  # Basic
   defdelegate gain(pattern, value), to: Effects
+  defdelegate gain(pattern, value, opts), to: Effects
   defdelegate pan(pattern, value), to: Effects
+  defdelegate pan(pattern, value, opts), to: Effects
   defdelegate speed(pattern, value), to: Effects
+  defdelegate speed(pattern, value, opts), to: Effects
   defdelegate cut(pattern, group), to: Effects
-  defdelegate room(pattern, value), to: Effects
-  defdelegate delay(pattern, value), to: Effects
+
+  # Lowpass filter (canonical: :cutoff, :resonance)
   defdelegate lpf(pattern, frequency), to: Effects
+  defdelegate lpf(pattern, frequency, opts), to: Effects
+  defdelegate lp(pattern, frequency), to: Effects
+  defdelegate lp(pattern, frequency, opts), to: Effects
+  defdelegate cutoff(pattern, frequency), to: Effects
+  defdelegate cutoff(pattern, frequency, opts), to: Effects
+  defdelegate lpq(pattern, q), to: Effects
+  defdelegate lpq(pattern, q, opts), to: Effects
+  defdelegate resonance(pattern, q), to: Effects
+  defdelegate resonance(pattern, q, opts), to: Effects
+
+  # Highpass filter (canonical: :hcutoff, :hresonance)
   defdelegate hpf(pattern, frequency), to: Effects
+  defdelegate hpf(pattern, frequency, opts), to: Effects
+  defdelegate hp(pattern, frequency), to: Effects
+  defdelegate hp(pattern, frequency, opts), to: Effects
+  defdelegate hcutoff(pattern, frequency), to: Effects
+  defdelegate hcutoff(pattern, frequency, opts), to: Effects
+  defdelegate hpq(pattern, q), to: Effects
+  defdelegate hpq(pattern, q, opts), to: Effects
+  defdelegate hresonance(pattern, q), to: Effects
+  defdelegate hresonance(pattern, q, opts), to: Effects
+
+  # Bandpass filter (canonical: :bandf, :bandq)
+  defdelegate bpf(pattern, frequency), to: Effects
+  defdelegate bpf(pattern, frequency, opts), to: Effects
+  defdelegate bp(pattern, frequency), to: Effects
+  defdelegate bp(pattern, frequency, opts), to: Effects
+  defdelegate bandf(pattern, frequency), to: Effects
+  defdelegate bandf(pattern, frequency, opts), to: Effects
+  defdelegate bpq(pattern, q), to: Effects
+  defdelegate bpq(pattern, q, opts), to: Effects
+  defdelegate bandq(pattern, q), to: Effects
+  defdelegate bandq(pattern, q, opts), to: Effects
+
+  # Envelope (ADSR)
+  defdelegate attack(pattern, time), to: Effects
+  defdelegate attack(pattern, time, opts), to: Effects
+  defdelegate att(pattern, time), to: Effects
+  defdelegate att(pattern, time, opts), to: Effects
+  defdelegate decay(pattern, time), to: Effects
+  defdelegate decay(pattern, time, opts), to: Effects
+  defdelegate dec(pattern, time), to: Effects
+  defdelegate dec(pattern, time, opts), to: Effects
+  defdelegate sustain(pattern, level), to: Effects
+  defdelegate sustain(pattern, level, opts), to: Effects
+  defdelegate sus(pattern, level), to: Effects
+  defdelegate sus(pattern, level, opts), to: Effects
+  defdelegate release(pattern, time), to: Effects
+  defdelegate release(pattern, time, opts), to: Effects
+  defdelegate rel(pattern, time), to: Effects
+  defdelegate rel(pattern, time, opts), to: Effects
+
+  # Delay
+  defdelegate delay(pattern, amount), to: Effects
+  defdelegate delay(pattern, amount, opts), to: Effects
+  defdelegate delaytime(pattern, time), to: Effects
+  defdelegate delaytime(pattern, time, opts), to: Effects
+  defdelegate delayt(pattern, time), to: Effects
+  defdelegate delayt(pattern, time, opts), to: Effects
+  defdelegate dt(pattern, time), to: Effects
+  defdelegate dt(pattern, time, opts), to: Effects
+  defdelegate delayfeedback(pattern, fb), to: Effects
+  defdelegate delayfeedback(pattern, fb, opts), to: Effects
+  defdelegate delayfb(pattern, fb), to: Effects
+  defdelegate delayfb(pattern, fb, opts), to: Effects
+  defdelegate dfb(pattern, fb), to: Effects
+  defdelegate dfb(pattern, fb, opts), to: Effects
+
+  # Reverb
+  defdelegate room(pattern, amount), to: Effects
+  defdelegate room(pattern, amount, opts), to: Effects
+  defdelegate roomsize(pattern, size), to: Effects
+  defdelegate roomsize(pattern, size, opts), to: Effects
+  defdelegate size(pattern, sz), to: Effects
+  defdelegate size(pattern, sz, opts), to: Effects
+  defdelegate sz(pattern, sz), to: Effects
+  defdelegate sz(pattern, sz, opts), to: Effects
+  defdelegate rsize(pattern, sz), to: Effects
+  defdelegate rsize(pattern, sz, opts), to: Effects
+
+  # Distortion
+  defdelegate distort(pattern, amount), to: Effects
+  defdelegate distort(pattern, amount, opts), to: Effects
+  defdelegate dist(pattern, amount), to: Effects
+  defdelegate dist(pattern, amount, opts), to: Effects
+  defdelegate crush(pattern, bits), to: Effects
+  defdelegate crush(pattern, bits, opts), to: Effects
+  defdelegate coarse(pattern, factor), to: Effects
+  defdelegate coarse(pattern, factor, opts), to: Effects
+
+  # Modulation
+  defdelegate vib(pattern, rate), to: Effects
+  defdelegate vib(pattern, rate, opts), to: Effects
+  defdelegate vibrato(pattern, rate), to: Effects
+  defdelegate vibrato(pattern, rate, opts), to: Effects
+  defdelegate v(pattern, rate), to: Effects
+  defdelegate v(pattern, rate, opts), to: Effects
+  defdelegate vibmod(pattern, depth), to: Effects
+  defdelegate vibmod(pattern, depth, opts), to: Effects
+  defdelegate vmod(pattern, depth), to: Effects
+  defdelegate vmod(pattern, depth, opts), to: Effects
+  defdelegate tremolo(pattern, rate), to: Effects
+  defdelegate tremolo(pattern, rate, opts), to: Effects
+  defdelegate trem(pattern, rate), to: Effects
+  defdelegate trem(pattern, rate, opts), to: Effects
+  defdelegate detune(pattern, amount), to: Effects
+  defdelegate detune(pattern, amount, opts), to: Effects
+  defdelegate det(pattern, amount), to: Effects
+  defdelegate det(pattern, amount, opts), to: Effects
+
+  # Sample control
+  defdelegate begin_at(pattern, pos), to: Effects
+  defdelegate end_at(pattern, pos), to: Effects
+  defdelegate loop(pattern, on), to: Effects
+  defdelegate clip(pattern, mult), to: Effects
+  defdelegate legato(pattern, mult), to: Effects
+  defdelegate unit(pattern, u), to: Effects
+
+  # Orbit
+  defdelegate orbit(pattern, num), to: Effects
+  defdelegate o(pattern, num), to: Effects
 
   # ============================================================================
   # Rhythm (delegated to Pattern.Rhythm)
@@ -742,6 +869,11 @@ defmodule UzuPattern.Pattern do
   defdelegate scale(pattern, scale_name), to: Harmony
   defdelegate scale(pattern), to: Harmony
   defdelegate octave(pattern, octave_pattern), to: Harmony
+  defdelegate transpose(pattern, amount), to: Harmony
+  defdelegate scale_transpose(pattern, scale_name, offset), to: Harmony
+  defdelegate root_notes(pattern, octave \\ 4), to: Harmony
+  defdelegate voicing(pattern, opts \\ []), to: Harmony
+  defdelegate chord(pattern, chord_symbol), to: Harmony
 
   # ============================================================================
   # Visualization Delegations
