@@ -1,7 +1,7 @@
 defmodule UzuPattern.MixProject do
   use Mix.Project
 
-  @version "0.7.0"
+  @version "0.8.0"
   @source_url "https://github.com/rpmessner/uzu_pattern"
 
   def project do
@@ -43,13 +43,13 @@ defmodule UzuPattern.MixProject do
 
   defp deps do
     [
-      {:uzu_parser, path: "../uzu_parser"},
+      {:uzu_parser, "~> 0.6.0"},
 
       # Music theory (scales, chords, notes → MIDI)
-      {:harmony, path: "../harmony", override: true},
+      {:harmony, "~> 0.2.0"},
 
       # Jazz standards chord progressions (Real Book data)
-      {:real_book, path: "../real_book_ex"},
+      {:real_book, "~> 0.1.0"},
 
       # Rational numbers for exact time arithmetic
       {:ratio, "~> 4.0"},

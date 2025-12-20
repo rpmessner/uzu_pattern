@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2025-12-20
+
+### Changed
+- Updated dependencies to use published Hex packages:
+  - `uzu_parser` ~> 0.6.0
+  - `harmony` ~> 0.2.0
+  - `real_book` ~> 0.1.0
+
+### Fixed
+- Grouped `set_param/3` function clauses to eliminate compiler warning
+- Updated test assertions to use correct Strudel/SuperDirt parameter names:
+  - `lpf` function sets `:cutoff` parameter
+  - `hpf` function sets `:hcutoff` parameter
+
 ## [0.7.0] - 2025-12-07
 
 ### Changed
@@ -214,7 +228,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HANDOFF guide for architecture and integration
 - ExDoc documentation generation
 
-[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/rpmessner/uzu_pattern/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/rpmessner/uzu_pattern/compare/v0.4.0...v0.5.0
