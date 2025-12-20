@@ -88,6 +88,17 @@ defmodule UzuPattern.Pattern.Effects do
     set_param(pattern, key, mini_notation, [])
   end
 
+  def set_param(%Pattern{} = pattern, key, value) do
+    # Value is static - apply to all haps
+    Pattern.from_cycles(fn cycle ->
+      pattern
+      |> Pattern.query(cycle)
+      |> Enum.map(fn hap ->
+        %{hap | value: Map.put(hap.value, key, value)}
+      end)
+    end)
+  end
+
   def set_param(%Pattern{} = pattern, key, mini_notation, opts)
       when is_binary(mini_notation) and is_list(opts) do
     # Parse string as mini-notation pattern, extract numeric values, then treat as signal
@@ -108,17 +119,6 @@ defmodule UzuPattern.Pattern.Effects do
       |> Pattern.with_offset(source_offset)
 
     set_param(pattern, key, parsed_pattern)
-  end
-
-  def set_param(%Pattern{} = pattern, key, value) do
-    # Value is static - apply to all haps
-    Pattern.from_cycles(fn cycle ->
-      pattern
-      |> Pattern.query(cycle)
-      |> Enum.map(fn hap ->
-        %{hap | value: Map.put(hap.value, key, value)}
-      end)
-    end)
   end
 
   # Sample a pattern at a specific time, returning {value, locations}
