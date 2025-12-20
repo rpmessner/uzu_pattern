@@ -154,14 +154,15 @@ defmodule UzuPattern.Pattern.EffectsTest do
       pattern = parse("bd sd") |> Pattern.lpf(1000)
       haps = Pattern.events(pattern)
 
-      assert Enum.all?(haps, fn h -> h.value[:lpf] == 1000 end)
+      # lpf sets :cutoff for Strudel/SuperDirt compatibility
+      assert Enum.all?(haps, fn h -> h.value[:cutoff] == 1000 end)
     end
 
     test "accepts full frequency range" do
       pattern = parse("bd") |> Pattern.lpf(20_000)
       haps = Pattern.events(pattern)
 
-      assert hd(haps).value[:lpf] == 20_000
+      assert hd(haps).value[:cutoff] == 20_000
     end
   end
 
@@ -170,14 +171,15 @@ defmodule UzuPattern.Pattern.EffectsTest do
       pattern = parse("bd sd") |> Pattern.hpf(500)
       haps = Pattern.events(pattern)
 
-      assert Enum.all?(haps, fn h -> h.value[:hpf] == 500 end)
+      # hpf sets :hcutoff for Strudel/SuperDirt compatibility
+      assert Enum.all?(haps, fn h -> h.value[:hcutoff] == 500 end)
     end
 
     test "accepts full frequency range" do
       pattern = parse("bd") |> Pattern.hpf(20_000)
       haps = Pattern.events(pattern)
 
-      assert hd(haps).value[:hpf] == 20_000
+      assert hd(haps).value[:hcutoff] == 20_000
     end
   end
 
@@ -196,7 +198,7 @@ defmodule UzuPattern.Pattern.EffectsTest do
       hap = hd(haps)
       assert hap.value[:gain] == 0.8
       assert hap.value[:pan] == 0.5
-      assert hap.value[:lpf] == 2000
+      assert hap.value[:cutoff] == 2000
       assert hap.value[:room] == 0.3
     end
 
@@ -213,7 +215,7 @@ defmodule UzuPattern.Pattern.EffectsTest do
       assert hap.value[:gain] == 0.8
       assert hap.value[:pan] == 0.5
       assert hap.value[:speed] == 2.0
-      assert hap.value[:lpf] == 2000
+      assert hap.value[:cutoff] == 2000
     end
   end
 
@@ -235,11 +237,11 @@ defmodule UzuPattern.Pattern.EffectsTest do
       # Sine at t=0.75: 0.0 -> 200 Hz
       assert length(haps) == 4
 
-      lpf_values = Enum.map(haps, & &1.value[:lpf])
-      assert_in_delta Enum.at(lpf_values, 0), 1100.0, 1.0
-      assert_in_delta Enum.at(lpf_values, 1), 2000.0, 1.0
-      assert_in_delta Enum.at(lpf_values, 2), 1100.0, 1.0
-      assert_in_delta Enum.at(lpf_values, 3), 200.0, 1.0
+      cutoff_values = Enum.map(haps, & &1.value[:cutoff])
+      assert_in_delta Enum.at(cutoff_values, 0), 1100.0, 1.0
+      assert_in_delta Enum.at(cutoff_values, 1), 2000.0, 1.0
+      assert_in_delta Enum.at(cutoff_values, 2), 1100.0, 1.0
+      assert_in_delta Enum.at(cutoff_values, 3), 200.0, 1.0
     end
 
     test "gain accepts signal pattern for modulation" do
@@ -286,8 +288,8 @@ defmodule UzuPattern.Pattern.EffectsTest do
       haps_c1 = Pattern.query(modulated, 1)
 
       # Saw at t=0: 0.0 -> 100 Hz (resets each cycle)
-      assert_in_delta hd(haps_c0).value[:lpf], 100.0, 1.0
-      assert_in_delta hd(haps_c1).value[:lpf], 100.0, 1.0
+      assert_in_delta hd(haps_c0).value[:cutoff], 100.0, 1.0
+      assert_in_delta hd(haps_c1).value[:cutoff], 100.0, 1.0
     end
 
     test "can mix static and signal parameters" do
@@ -303,12 +305,12 @@ defmodule UzuPattern.Pattern.EffectsTest do
       # Both events have static gain 0.8
       assert Enum.all?(haps, &(&1.value[:gain] == 0.8))
 
-      # But modulated lpf values
-      lpf_values = Enum.map(haps, & &1.value[:lpf])
+      # But modulated cutoff values (lpf sets :cutoff)
+      cutoff_values = Enum.map(haps, & &1.value[:cutoff])
       # at t=0
-      assert_in_delta Enum.at(lpf_values, 0), 1100.0, 1.0
+      assert_in_delta Enum.at(cutoff_values, 0), 1100.0, 1.0
       # at t=0.5 (sine back to 0.5)
-      assert_in_delta Enum.at(lpf_values, 1), 1100.0, 1.0
+      assert_in_delta Enum.at(cutoff_values, 1), 1100.0, 1.0
     end
   end
 end
