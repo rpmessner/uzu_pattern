@@ -4,101 +4,99 @@ defmodule UzuPattern.Pattern.Visualization do
 
   Painters attach visualization configuration to patterns. When patterns are
   evaluated, the painters are extracted and routed to appropriate visualization
-  backends (browser overlay, inline widgets, native visualizers, etc.).
+  backends (inline CodeMirror widgets, etc.).
 
-  ## Two Categories
+  ## Naming Convention (matches Strudel)
 
-  **Pattern visualizations** (server-coordinated):
-  - `pianoroll/2` - Timeline with note rectangles
-  - `spiral/2` - Circular pattern display
-  - `punchcard/2` - Vertically-stacked events
+  Leading underscore functions render as inline CodeMirror widgets:
+  - `_pianoroll/2` - Timeline with note rectangles
+  - `_spiral/2` - Circular pattern display
+  - `_punchcard/2` - Vertically-stacked events
+  - `_scope/2` - Oscilloscope waveform
+  - `_spectrum/2` - Frequency spectrum analyzer
 
-  **Audio visualizations** (browser-only, require AnalyserNode):
-  - `spectrum/2` - Frequency spectrum analyzer
-  - `scope/2` - Oscilloscope waveform
-
-  ## Targets
-
-  - `:overlay` - Full-screen overlay canvas (default)
-  - `:inline` - CodeMirror inline widget
-  - `:all` - Both overlay and inline
+  Future: non-underscore variants for overlay visualizations.
 
   ## Examples
 
-      # Add pianoroll to pattern
-      n("0 2 4") |> pianoroll(cycles: 4)
+      # Inline pianoroll below the code
+      n("0 2 4") |> _pianoroll(cycles: 4)
 
-      # Multiple visualizations
-      s("bd sd") |> pianoroll() |> scope(target: :inline)
-
-      # Inline only
-      n("0 2 4") |> spiral(target: :inline)
+      # Multiple inline visualizations
+      s("bd sd") |> _pianoroll() |> _scope()
   """
 
   alias UzuPattern.Pattern
 
-  # Pattern visualizations (server-coordinated)
+  # Inline visualizations (CodeMirror widgets)
 
   @doc """
-  Add pianoroll visualization - timeline with note rectangles.
+  Add inline pianoroll visualization - timeline with note rectangles.
+
+  Renders as a CodeMirror widget below the pattern code.
 
   ## Options
   - `:cycles` - Number of cycles to display (default: 4)
   - `:playhead` - Playhead position 0.0-1.0 (default: 0.5)
-  - `:target` - Where to render: `:overlay`, `:inline`, or `:all` (default: `:overlay`)
+  - `:width` - Widget width in pixels (default: 500)
+  - `:height` - Widget height in pixels (default: 60)
   """
-  def pianoroll(%Pattern{} = pattern, opts \\ []) do
+  def _pianoroll(%Pattern{} = pattern, opts \\ []) do
     add_painter(pattern, :pianoroll, opts)
   end
 
   @doc """
-  Add spiral visualization - circular pattern display.
+  Add inline spiral visualization - circular pattern display.
+
+  Renders as a CodeMirror widget below the pattern code.
 
   ## Options
   - `:stretch` - Spiral stretch factor (default: 1)
   - `:size` - Size in pixels (default: 80)
-  - `:target` - Where to render (default: `:overlay`)
   """
-  def spiral(%Pattern{} = pattern, opts \\ []) do
+  def _spiral(%Pattern{} = pattern, opts \\ []) do
     add_painter(pattern, :spiral, opts)
   end
 
   @doc """
-  Add punchcard visualization - vertically-stacked events.
+  Add inline punchcard visualization - vertically-stacked events.
+
+  Renders as a CodeMirror widget below the pattern code.
 
   ## Options
   - `:vertical` - Vertical spacing (default: 1)
   - `:labels` - Show labels (default: true)
-  - `:target` - Where to render (default: `:overlay`)
   """
-  def punchcard(%Pattern{} = pattern, opts \\ []) do
+  def _punchcard(%Pattern{} = pattern, opts \\ []) do
     add_painter(pattern, :punchcard, opts)
   end
 
-  # Audio visualizations (browser-only, need AnalyserNode)
-
   @doc """
-  Add spectrum analyzer visualization.
+  Add inline oscilloscope visualization.
 
-  Requires browser with WebAudio AnalyserNode - won't render on native clients.
+  Renders as a CodeMirror widget below the pattern code.
+  Requires browser with WebAudio AnalyserNode.
 
   ## Options
-  - `:target` - Where to render (default: `:overlay`)
+  - `:width` - Widget width in pixels (default: 500)
+  - `:height` - Widget height in pixels (default: 60)
   """
-  def spectrum(%Pattern{} = pattern, opts \\ []) do
-    add_painter(pattern, :spectrum, Keyword.put(opts, :audio_viz, true))
+  def _scope(%Pattern{} = pattern, opts \\ []) do
+    add_painter(pattern, :scope, Keyword.put(opts, :audio_viz, true))
   end
 
   @doc """
-  Add oscilloscope visualization.
+  Add inline spectrum analyzer visualization.
 
-  Requires browser with WebAudio AnalyserNode - won't render on native clients.
+  Renders as a CodeMirror widget below the pattern code.
+  Requires browser with WebAudio AnalyserNode.
 
   ## Options
-  - `:target` - Where to render (default: `:overlay`)
+  - `:width` - Widget width in pixels (default: 500)
+  - `:height` - Widget height in pixels (default: 60)
   """
-  def scope(%Pattern{} = pattern, opts \\ []) do
-    add_painter(pattern, :scope, Keyword.put(opts, :audio_viz, true))
+  def _spectrum(%Pattern{} = pattern, opts \\ []) do
+    add_painter(pattern, :spectrum, Keyword.put(opts, :audio_viz, true))
   end
 
   # Query functions
@@ -122,9 +120,9 @@ defmodule UzuPattern.Pattern.Visualization do
   defp add_painter(%Pattern{metadata: meta} = pattern, type, opts) do
     painter = %{
       type: type,
-      target: Keyword.get(opts, :target, :overlay),
+      target: :inline,
       audio_viz: Keyword.get(opts, :audio_viz, false),
-      options: opts |> Keyword.drop([:target, :audio_viz]) |> Map.new()
+      options: opts |> Keyword.drop([:audio_viz]) |> Map.new()
     }
 
     painters = Map.get(meta, :painters, [])

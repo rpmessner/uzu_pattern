@@ -881,11 +881,13 @@ defmodule UzuPattern.Pattern do
 
   alias UzuPattern.Pattern.Visualization
 
-  defdelegate pianoroll(pattern, opts \\ []), to: Visualization
-  defdelegate spiral(pattern, opts \\ []), to: Visualization
-  defdelegate punchcard(pattern, opts \\ []), to: Visualization
-  defdelegate spectrum(pattern, opts \\ []), to: Visualization
-  defdelegate scope(pattern, opts \\ []), to: Visualization
+  # Inline visualizations (leading underscore = inline widget, matches Strudel)
+  defdelegate _pianoroll(pattern, opts \\ []), to: Visualization
+  defdelegate _spiral(pattern, opts \\ []), to: Visualization
+  defdelegate _punchcard(pattern, opts \\ []), to: Visualization
+  defdelegate _spectrum(pattern, opts \\ []), to: Visualization
+  defdelegate _scope(pattern, opts \\ []), to: Visualization
+
   defdelegate get_painters(pattern), to: Visualization
   defdelegate has_painters?(pattern), to: Visualization
 
