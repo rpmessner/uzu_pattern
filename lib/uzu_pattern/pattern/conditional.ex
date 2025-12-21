@@ -11,9 +11,9 @@ defmodule UzuPattern.Pattern.Conditional do
   - `chunk/3`, `chunk_back/3` - Apply to rotating sections
   """
 
+  alias UzuPattern.Hap
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Time
-  alias UzuPattern.Hap
   alias UzuPattern.Time, as: T
 
   @doc """

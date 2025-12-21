@@ -8,9 +8,9 @@ defmodule UzuPattern.PrecisionTest do
 
   use ExUnit.Case, async: true
 
+  alias UzuPattern.Pattern
   alias UzuPattern.Time
   alias UzuPattern.TimeSpan
-  alias UzuPattern.Pattern
 
   describe "rational time precision" do
     test "1/3 + 1/3 + 1/3 equals exactly 1" do

@@ -14,8 +14,8 @@ defmodule UzuPattern.Pattern.Starters do
       note("c3 e3 g3")
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Interpreter
+  alias UzuPattern.Pattern
 
   @doc """
   Create a sound pattern from mini-notation.

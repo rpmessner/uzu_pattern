@@ -20,7 +20,7 @@ defmodule UzuPattern do
   ## Quick Start
 
   ```elixir
-  alias UzuPattern.{Pattern, Interpreter}
+  alias UzuPattern.{Interpreter, Pattern}
 
   # Parse and interpret mini-notation
   pattern = "bd sd hh cp"
@@ -94,7 +94,7 @@ defmodule UzuPattern do
   See `UzuPattern.Pattern` for full documentation.
   """
 
-  alias UzuPattern.{Pattern, Interpreter}
+  alias UzuPattern.{Interpreter, Pattern}
 
   @doc """
   Parse and interpret a mini-notation string into a Pattern.

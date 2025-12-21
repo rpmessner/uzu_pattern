@@ -1,8 +1,8 @@
 defmodule UzuPattern.TimeSpanTest do
   use ExUnit.Case, async: true
 
-  alias UzuPattern.TimeSpan
   alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   describe "new/2" do
     test "creates timespan from begin and end" do

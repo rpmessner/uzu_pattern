@@ -28,9 +28,9 @@ defmodule UzuPattern.Pattern.Time do
   This eliminates floating-point drift in patterns like `fast(3) |> slow(3)`.
   """
 
+  alias UzuPattern.Hap
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Algebra
-  alias UzuPattern.Hap
   alias UzuPattern.Time, as: T
   alias UzuPattern.TimeSpan
 

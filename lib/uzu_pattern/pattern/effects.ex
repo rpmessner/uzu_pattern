@@ -37,8 +37,8 @@ defmodule UzuPattern.Pattern.Effects do
   | `bpf`        | `:bandf`     |
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Hap
+  alias UzuPattern.Pattern
   alias UzuPattern.Time
 
   # ===========================================================================
@@ -424,7 +424,7 @@ defmodule UzuPattern.Pattern.Effects do
   def clip(pattern, mult), do: set_param(pattern, :clip, mult)
   def legato(pattern, mult), do: set_param(pattern, :clip, mult)
 
-  @doc "Set speed unit: \"r\" (rate), \"c\" (cycles), \"s\" (seconds)."
+  @doc ~s[Set speed unit: "r" (rate), "c" (cycles), "s" (seconds).]
   def unit(pattern, u), do: set_param(pattern, :unit, u)
 
   # ===========================================================================

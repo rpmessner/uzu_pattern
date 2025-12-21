@@ -139,7 +139,7 @@ defmodule UzuPattern.Pattern.StructureTest do
       mask = parse("0 0 0 0")
       pattern = parse("bd sd hh cp") |> Pattern.mask(mask)
       haps = Pattern.query(pattern, 0)
-      assert length(haps) == 0
+      assert haps == []
     end
 
     test "mask with mixed values" do

@@ -30,10 +30,10 @@ defmodule UzuPattern.Pattern.Algebra do
       )
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Hap
-  alias UzuPattern.TimeSpan
+  alias UzuPattern.Pattern
   alias UzuPattern.Time, as: T
+  alias UzuPattern.TimeSpan
 
   # ============================================================================
   # Functor: fmap / with_value
@@ -223,8 +223,11 @@ defmodule UzuPattern.Pattern.Algebra do
   - `fn outer, _inner -> outer end` - outer_bind
   - `fn _outer, inner -> inner end` - inner_bind
   """
-  @spec bind_with(Pattern.t(), (map() -> Pattern.t()), (TimeSpan.t() | nil, TimeSpan.t() | nil -> TimeSpan.t() | nil)) ::
-          Pattern.t()
+  @spec bind_with(
+          Pattern.t(),
+          (map() -> Pattern.t()),
+          (TimeSpan.t() | nil, TimeSpan.t() | nil -> TimeSpan.t() | nil)
+        ) :: Pattern.t()
   def bind_with(%Pattern{} = pattern, func, choose_whole) when is_function(func, 1) and is_function(choose_whole, 2) do
     Pattern.new(fn span ->
       pattern

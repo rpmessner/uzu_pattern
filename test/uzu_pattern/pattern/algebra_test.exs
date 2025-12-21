@@ -3,8 +3,8 @@ defmodule UzuPattern.Pattern.AlgebraTest do
 
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Algebra
-  alias UzuPattern.TimeSpan
   alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   # Sort haps by part begin time using exact rational comparison
   defp sort_by_time(haps) do

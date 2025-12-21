@@ -2,8 +2,8 @@ defmodule UzuPattern.HapTest do
   use ExUnit.Case, async: true
 
   alias UzuPattern.Hap
-  alias UzuPattern.TimeSpan
   alias UzuPattern.Time
+  alias UzuPattern.TimeSpan
 
   describe "new/3" do
     test "creates discrete hap with whole and part equal" do

@@ -36,8 +36,8 @@ defmodule UzuPattern.Pattern.Harmony do
   voicing dictionaries) are delegated to the Harmony library.
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Hap
+  alias UzuPattern.Pattern
   alias UzuPattern.TimeSpan
 
   # ============================================================

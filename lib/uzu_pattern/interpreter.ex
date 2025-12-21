@@ -15,9 +15,9 @@ defmodule UzuPattern.Interpreter do
   - Atoms `bd:1` → `Pattern.pure("bd", sample: 1)`
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Euclidean
   alias UzuPattern.Hap
+  alias UzuPattern.Pattern
   alias UzuPattern.Time, as: T
   alias UzuPattern.TimeSpan
 

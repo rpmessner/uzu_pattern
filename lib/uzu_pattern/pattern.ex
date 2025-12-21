@@ -49,10 +49,11 @@ defmodule UzuPattern.Pattern do
   """
 
   alias UzuPattern.Hap
-  alias UzuPattern.Time
-  alias UzuPattern.TimeSpan
-  alias UzuPattern.Pattern.{Starters, Time, Structure, Conditional, Effects, Rhythm, Signal, Harmony, Algebra}
   alias UzuPattern.Time, as: T
+  alias UzuPattern.TimeSpan
+
+  # Pattern submodules - must come last so Pattern.Time shadows UzuPattern.Time
+  alias UzuPattern.Pattern.{Algebra, Conditional, Effects, Harmony, Rhythm, Signal, Starters, Structure, Time}
 
   # Query function now takes a TimeSpan and returns haps for that span.
   # This enables pattern algebra operations that need to query arbitrary time ranges.

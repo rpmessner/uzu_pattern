@@ -7,8 +7,8 @@ defmodule UzuPattern.PatternTest do
 
   use ExUnit.Case, async: true
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Hap
+  alias UzuPattern.Pattern
   alias UzuPattern.TimeSpan
 
   defp parse(str), do: UzuPattern.parse(str)

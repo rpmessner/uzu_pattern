@@ -7,9 +7,9 @@ defmodule UzuPattern.Pattern.Rhythm do
   - `swing/2`, `swing_by/3` - Add swing timing
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Euclidean
   alias UzuPattern.Hap
+  alias UzuPattern.Pattern
   alias UzuPattern.Time, as: T
   alias UzuPattern.TimeSpan
 

@@ -43,8 +43,8 @@ defmodule UzuPattern.Pattern.Signal do
       sine() |> slow(4) |> range(0.5, 1.0)
   """
 
-  alias UzuPattern.Pattern
   alias UzuPattern.Hap
+  alias UzuPattern.Pattern
   alias UzuPattern.Time
 
   # ============================================================================

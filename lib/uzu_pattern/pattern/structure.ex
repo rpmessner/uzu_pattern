@@ -12,9 +12,9 @@ defmodule UzuPattern.Pattern.Structure do
   - `striate/2`, `chop/2` - Slice patterns
   """
 
+  alias UzuPattern.Hap
   alias UzuPattern.Pattern
   alias UzuPattern.Pattern.Effects
-  alias UzuPattern.Hap
   alias UzuPattern.Time, as: T
   alias UzuPattern.TimeSpan
 
